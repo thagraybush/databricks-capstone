@@ -55,3 +55,27 @@ resources:
             notebook_path: ../notebooks/50_ds_kpis_and_models.py
             base_parameters:
               domain_schema: workspace.retail
+
+    nightly_sessions:
+      name: "[autopilot] nightly persona sessions → telemetry corpus"
+      max_concurrent_runs: 1
+      schedule:
+        quartz_cron_expression: "0 0 2 * * ?"   # 02:00 nightly
+        timezone_id: "America/Denver"
+        pause_status: UNPAUSED
+      tasks:
+        - task_key: run_sessions
+          notebook_task:
+            notebook_path: ../notebooks/70_run_sessions.py
+            base_parameters:
+              space_id: 01f17b5a51411bc382cd3cd224d11daf
+              domain_schema: workspace.retail
+              sessions: "10"
+              max_questions: "60"
+        - task_key: ingest_telemetry
+          depends_on: [{ task_key: run_sessions }]
+          notebook_task:
+            notebook_path: ../notebooks/10_ingest_telemetry.py
+            base_parameters:
+              domain_schema: workspace.retail
+              space_id: 01f17b5a51411bc382cd3cd224d11daf

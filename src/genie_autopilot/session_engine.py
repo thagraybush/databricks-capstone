@@ -150,6 +150,7 @@ def run_sessions(
     seed: int = 11,
     max_questions: int = 40,
     scripts: list[SessionScript] | None = None,
+    write_manifest: bool = True,
 ) -> list[dict]:
     scripts = scripts or SCRIPTS
     rng = random.Random(seed)
@@ -187,11 +188,14 @@ def run_sessions(
             })
         if asked >= max_questions:
             break
-    MANIFEST_DIR.mkdir(parents=True, exist_ok=True)
-    manifest = MANIFEST_DIR / "session_manifest.jsonl"
-    with manifest.open("a") as f:
-        for r in records:
-            f.write(json.dumps(r) + "\n")
+    if write_manifest:
+        try:
+            MANIFEST_DIR.mkdir(parents=True, exist_ok=True)
+            with (MANIFEST_DIR / "session_manifest.jsonl").open("a") as f:
+                for r in records:
+                    f.write(json.dumps(r) + "\n")
+        except OSError as exc:  # e.g. read-only bundle files path in-workspace
+            print(f"[sessions] manifest not written ({exc}); records returned in-memory")
     return records
 
 
