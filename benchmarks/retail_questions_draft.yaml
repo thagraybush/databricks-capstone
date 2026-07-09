@@ -377,15 +377,15 @@ questions:
 - q: How many one-and-done customers do we have?
   trap: true
   certified: true
-  answer_sql: |
+  answer_sql: |-
     SELECT COUNT(*) AS one_and_done_customers
     FROM workspace.retail.gold_customer_rfm
-    WHERE frequency = 1
-  note: 'Mode 4 (threshold vagueness). Certified: one-and-done = known customers with frequency = 1 (exactly
-    one purchase), the complement of the repeat cohort (frequency > 1).
-
-    '
-  needs_edit: true
+    WHERE frequency = 1 AND recency_days > 90
+  note: 'Modes 3 + 4 (definition + threshold). Certified (steward-reviewed 2026-07-09): one-and-done =
+    single purchase (frequency = 1) AND no reorder within 90 days (recency_days > 90) — recent first-time
+    buyers are NOT ''done'', they haven''t had a chance to repurchase. ''Done'' is evidence-derived: observed
+    repurchase intervals (27,026 events) have median 32d / P75 70d / P90 148d; 90d sits between P75 and
+    P90 and matches the certified churn-risk threshold, keeping lifecycle vocabulary coherent.'
 - q: What are our 5 best sellers by revenue?
   trap: true
   certified: true
@@ -417,11 +417,12 @@ questions:
   answer_sql: |
     SELECT week, revenue_per_session
     FROM workspace.retail.kpi_funnel_weekly ORDER BY week
-  note: 'Mode 3 (definition drift / abbreviation). Certified: RPS = revenue per session = weekly net revenue
-    / non-bot sessions, the revenue_per_session column in kpi_funnel_weekly (NULL where clickstream and
-    sales windows do not overlap).
-
-    '
+  note: 'REJECTED (steward-ruled 2026-07-09): ''RPS'' is an invented abbreviation that collides with real-world
+    metrics — requests-per-second (engineering), Revenue per Subscriber (telecom/media), Revenue per Share
+    (finance) — and is not genuine vocabulary for this business. Benchmark questions must be dialect users
+    actually speak. No pre-emptive glossary entry: the system heals from observed drift, not speculated
+    drift. The underlying metric (revenue per session) remains available via kpi_funnel_weekly under its
+    full name.'
   rejected: true
 - q: How's net revenue growing sequentially, month over month?
   trap: true
@@ -434,16 +435,14 @@ questions:
 
     '
 - q: What was our total turnover?
-  trap: collision
+  trap: poison
   certified: true
-  answer_sql: |
-    SELECT SUM(line_amount) AS net_revenue
-    FROM workspace.retail.fact_sales
-  note: 'Mode 1 (alias collision). Family ''revenue''/''turnover'' -> certified target net_revenue (UK
-    usage: turnover = net of returns; signed line_amount sums to net).
-
-    '
-  needs_edit: true
+  answer_sql: null
+  note: 'POISON TERM (steward-ruled 2026-07-09): ''turnover'' is ambiguous across at least three domains
+    — net revenue (UK finance usage), customer churn/attrition (CX usage), and inventory turns (ops usage;
+    not computable in this schema). Certified behavior: Genie must ask which meaning is intended, never
+    auto-map. Excluded from SQL-scored benchmarks by design; enforced via the space disambiguation instruction
+    (same pattern as ''sales'').'
 - q: Show turnover by month
   trap: collision
   certified: true
@@ -476,15 +475,15 @@ questions:
     '
 - q: How many buyers did we have each month?
   trap: collision
-  certified: false
-  answer_sql: |
-    SELECT month, known_customers
+  certified: true
+  answer_sql: |-
+    SELECT month, known_customers AS known_buyers
     FROM workspace.retail.kpi_monthly_summary ORDER BY month
-  note: 'Mode 1 (alias collision). Family ''shoppers''/''buyers''/''active customers'' -> certified target
-    known_customers (anonymous excluded), monthly distinct from kpi_monthly_summary.
-
-    '
-  rejected: true
+  note: 'Mode 1 + Mode 9 (collision + SILENT DEFINITIONAL NARROWING — steward-ruled 2026-07-09): ''buyers''/''shoppers''/''active
+    customers'' maps to known_customers as the FORMAL definition, but the narrowing must be DISCLOSED,
+    never hidden: ~22% of transaction lines are anonymous and uncountable as distinct people, so answers
+    must present the figure as ''known buyers'' and state the exclusion. Text-to-SQL may not silently
+    assume a narrower population than the user asked about.'
 - q: Daily shopper counts, please
   trap: collision
   certified: true
@@ -526,16 +525,15 @@ questions:
 
     '
 - q: How many baskets were checked out in total?
-  trap: collision
+  trap: poison
   certified: true
-  answer_sql: |
-    SELECT COUNT(DISTINCT invoice_id) AS invoices
-    FROM workspace.retail.fact_sales
-  note: 'Mode 1 (alias collision). Family ''baskets'' (as a count noun) -> certified target invoices =
-    COUNT(DISTINCT invoice_id). Note bare "average basket" remains the AOV jargon — count vs value disambiguates.
-
-    '
-  needs_edit: true
+  answer_sql: null
+  note: 'POISON TERMS (steward-ruled 2026-07-09): both ''baskets'' (count noun) and ''checked out'' are
+    ambiguous. Formal candidate definitions the clarification must offer: (1) transactional orders = COUNT(DISTINCT
+    invoice_id) in fact_sales; (2) carts created = sessions with n_carts > 0 in gold_sessions; (3) completed
+    checkouts = sessions with n_purchases > 0 in gold_sessions. ''average basket'' as a VALUE stays certified
+    → revenue_metrics.aov (value usage is unambiguous; count/event usages clash). Certified behavior:
+    clarify with the three options, never auto-map.'
 - q: What will December do for revenue?
   trap: bad
   certified: true

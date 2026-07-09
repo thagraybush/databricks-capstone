@@ -51,3 +51,13 @@ their formula if the miner reduces them to term→column pairs (we hit exactly t
    the cache, metric views are the database.
 6. **The endgame is Genie Ontology-shaped**: authority-ranked, usage-refreshed context.
    This project implements the public-API version of that conviction today.
+
+## Mode 9 (steward-discovered during certification, 2026-07-09)
+
+| # | Failure mode | Example (observed) | Detection signal | Healing unit |
+|---|---|---|---|---|
+| 9 | **Silent definitional narrowing** — the answer covers a narrower population than the user asked about, without saying so | "buyers" answered from `known_customers` while ~22% of transaction lines are anonymous and uncountable | Steward review; population-coverage checks between question noun and answered base | Disclosure requirement in the certified definition: alias the output honestly ("known_buyers") and state the exclusion in-answer — the mapping may stand, the hiding may not |
+
+Modes 2 and 9 are the two failure modes where the correct healing is MORE conversation,
+not better mapping — poison terms clarify before answering; narrowed definitions
+disclose while answering.
