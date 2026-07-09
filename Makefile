@@ -10,8 +10,10 @@ venv:
 install: venv
 	$(PIP) install -q -e ".[dev]"
 
-lint:
-	$(VENV)/bin/ruff check src tests data_gen
+lint:   ## mirrors the CI gates exactly (strict + notebook-scoped + compile)
+	$(VENV)/bin/ruff check src tests data_gen infra
+	$(VENV)/bin/ruff check --ignore E501,F821,E402 notebooks pipelines
+	$(PY) -m py_compile notebooks/*.py pipelines/*.py
 
 test:
 	$(VENV)/bin/pytest -q

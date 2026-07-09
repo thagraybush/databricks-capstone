@@ -13,5 +13,18 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e ".[dev]"
-      - run: ruff check src tests data_gen
+      # Strict lint: the package, tests, datagen, and infra scripts.
+      - run: ruff check src tests data_gen infra
+      # Notebook/pipeline lint: same rules, minus the ones the Databricks
+      # notebook format makes structural — E501 (# MAGIC comment lines),
+      # F821 (ambient spark/dbutils globals injected by the runtime),
+      # E402 (imports live in the first code cell, after # COMMAND header
+      # cells). Scoped to this invocation only; everything else stays strict.
+      - run: ruff check --ignore E501,F821,E402 notebooks pipelines
+      # Compile gate: every deployed notebook/pipeline source must byte-compile,
+      # so a syntax error in the production surface fails the build.
+      - run: python -m py_compile notebooks/*.py pipelines/*.py
+      # NOTE: `ruff format --check` deliberately NOT gated yet — the repo is not
+      # format-clean (34 files would reformat). Add the gate together with the
+      # one-time formatting sweep (issue #22), timed against in-flight branches.
       - run: pytest -q
