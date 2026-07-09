@@ -132,3 +132,16 @@ aggregate: 43/66 = 65%
 ```
 
 44 newly certified questions synced (4 needs_edit held back pending steward feedback; 2 rejected; 8 noise excluded by design — scored by the router instead).
+
+## Post-certification healing — 70-question suite (run `01f17be5d90e17a5a3a27bd1d752cc18`)
+
+Steward session outcomes applied: 2 evidence-hardened definitions (repeat rate attribution rationale; one-and-done with data-derived 90d threshold from 27,026 repurchase gaps), 3 poison terms registered (turnover; baskets-count; checked-out), 1 disclosure rule (mode 9: 'buyers' → 'known buyers', never silently narrow), 1 new metric (repeat visitor rate, web-attributed), 1 rejection (RPS — collides with real-world metrics). 17 certified glossary lines healed to the space.
+
+Before healing: 43/66 = 65%. After:
+
+```
+clean    : 22/30 = 73%
+collision: 7/12 = 58%
+jargon   : 22/28 = 79%
+aggregate: 51/70 = 73%
+```
