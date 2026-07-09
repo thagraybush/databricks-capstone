@@ -83,3 +83,23 @@ jargon   : mean 80%  range [70%, 90%]  runs: 8/10, 7/10, 9/10
 ```
 
 Genie is nondeterministic; stability is reported as mean ± range across repeats rather than a single-run point estimate.
+
+## Rollback drill (issue #7) — injected wrong 'whales' definition
+
+Baseline run `01f17bc4887a1f2b9e2f9d270329e45f`, post-injection run `01f17bccca8e1c4b91461815d12c9ff2`.
+
+```
+jargon (bleeding-edge dialect): 9/10 → 7/10 (90% → 70%, lift -20%)
+clean (control, no-regression):  8/8 → 7/8 (100% → 88%)
+verdict: ROLLBACK
+```
+
+Outcome: **gate TRIPPED; rollback executed; recovery verified**
+
+Recovery check:
+
+```
+jargon (bleeding-edge dialect): 9/10 → 8/10 (90% → 80%, lift -10%)
+clean (control, no-regression):  8/8 → 8/8 (100% → 100%)
+verdict: ROLLBACK
+```
