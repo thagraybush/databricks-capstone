@@ -121,3 +121,14 @@ hard-rejects of answerable questions) and deliberately over-cautious on pass-thr
 73% of answerable questions route to human review. This is the correct governed cold-start
 posture; the nightly session corpus + weekly retrains are the relaxation mechanism, and
 the pass-through rate is the metric to watch as the corpus grows.
+
+## Expanded-suite baseline — 66 human-certified benchmarks (run `01f17bd7e0621baa8809b6b177aba192`)
+
+```
+clean    : 22/30 = 73%
+collision: 7/11 = 64%
+jargon   : 14/25 = 56%
+aggregate: 43/66 = 65%
+```
+
+44 newly certified questions synced (4 needs_edit held back pending steward feedback; 2 rejected; 8 noise excluded by design — scored by the router instead).
