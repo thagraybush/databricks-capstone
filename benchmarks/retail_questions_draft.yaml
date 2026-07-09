@@ -1,0 +1,673 @@
+# DRAFT expansion of the RETAIL Genie benchmark suite (GitHub issue #6:
+# "80+ questions, LLM-drafted, human-certified"). ~58 new questions to merge
+# into benchmarks/retail_questions.yaml AFTER human certification.
+#
+# Strata (same trap key as the certified suite):
+#   trap: false     — clean control (paraphrases of certified intents + new
+#                     answerable questions over KPI views / untested columns)
+#   trap: true      — business-jargon dialect (definition / threshold / unit /
+#                     shape failure modes; certified definition in the note)
+#   trap: collision — many names -> one metric (alias families; the note names
+#                     the ONE certified target per family)
+#   trap: bad       — deliberately unanswerable noise (answer_sql: null)
+#
+# Failure-mode numbers in notes refer to docs/semantic-failure-taxonomy.md.
+# Convention: rates are 0-1 fractions unless the question asks for percent.
+
+schema: workspace.retail
+status: DRAFT - every entry requires human certification before loading to the space
+
+questions:
+  # ===========================================================================
+  # (a) CLEAN — paraphrase variants of certified intents (same answer_sql,
+  #     copied verbatim from benchmarks/retail_questions.yaml)
+  # ===========================================================================
+
+  - q: "Net revenue by country, please"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT country, SUM(line_amount) AS net_revenue
+      FROM workspace.retail.fact_sales GROUP BY country
+    note: >
+      Clean control — paraphrase of certified "What is total net revenue by
+      country?" (terse imperative form). Same certified SQL; guards the clean
+      stratum against regression.
+
+  - q: "Break down total net revenue for each country"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT country, SUM(line_amount) AS net_revenue
+      FROM workspace.retail.fact_sales GROUP BY country
+    note: >
+      Clean control — paraphrase of certified "What is total net revenue by
+      country?" (different word order/verb). Same certified SQL.
+
+  - q: "Daily net revenue in December 2011"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT sale_date, net_revenue
+      FROM workspace.retail.gold_daily_revenue
+      WHERE sale_date >= '2011-12-01' AND sale_date < '2012-01-01'
+      ORDER BY sale_date
+    note: >
+      Clean control — paraphrase of certified "Show daily net revenue for
+      December 2011". Also guards temporal handling (mode 8: explicit calendar
+      month, not rolling window). Same certified SQL.
+
+  - q: "What was net revenue per day during December 2011?"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT sale_date, net_revenue
+      FROM workspace.retail.gold_daily_revenue
+      WHERE sale_date >= '2011-12-01' AND sale_date < '2012-01-01'
+      ORDER BY sale_date
+    note: >
+      Clean control — interrogative paraphrase of certified "Show daily net
+      revenue for December 2011". Same certified SQL; mode 8 guard.
+
+  - q: "Give me the daily invoice count"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT sale_date, invoices
+      FROM workspace.retail.gold_daily_revenue ORDER BY sale_date
+    note: >
+      Clean control — paraphrase of certified "How many invoices were there per
+      day?" (imperative form). Same certified SQL.
+
+  - q: "Invoices per day, ordered by date"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT sale_date, invoices
+      FROM workspace.retail.gold_daily_revenue ORDER BY sale_date
+    note: >
+      Clean control — paraphrase of certified "How many invoices were there per
+      day?" with the sort spelled out (mode 6 shape guard). Same certified SQL.
+
+  - q: "Which 10 products sold the most units?"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT p.product_name, SUM(f.quantity) AS units
+      FROM workspace.retail.fact_sales f
+      JOIN workspace.retail.dim_products p ON f.stock_code = p.stock_code
+      WHERE NOT f.is_return
+      GROUP BY p.product_name ORDER BY units DESC LIMIT 10
+    note: >
+      Clean control — paraphrase of certified "Top 10 products by units sold".
+      Guards LIMIT 10 shape (mode 6) and the exclude-returns rule (mode 7).
+      Same certified SQL.
+
+  - q: "What're our top ten products by unit volume?"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT p.product_name, SUM(f.quantity) AS units
+      FROM workspace.retail.fact_sales f
+      JOIN workspace.retail.dim_products p ON f.stock_code = p.stock_code
+      WHERE NOT f.is_return
+      GROUP BY p.product_name ORDER BY units DESC LIMIT 10
+    note: >
+      Clean control — contracted/informal paraphrase of certified "Top 10
+      products by units sold" with "ten" spelled out. Same certified SQL.
+
+  - q: "Count of known customers in each country"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT country, COUNT(*) AS customers
+      FROM workspace.retail.gold_customer_rfm GROUP BY country
+    note: >
+      Clean control — paraphrase of certified "How many known customers do we
+      have per country?" (noun-phrase form). Same certified SQL.
+
+  - q: "Per country, how many known customers are there?"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT country, COUNT(*) AS customers
+      FROM workspace.retail.gold_customer_rfm GROUP BY country
+    note: >
+      Clean control — fronted-modifier paraphrase of certified "How many known
+      customers do we have per country?". Same certified SQL.
+
+  - q: "How much value did we lose to returns in each country?"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT country, SUM(-line_amount) AS returns_value
+      FROM workspace.retail.fact_sales WHERE is_return GROUP BY country
+    note: >
+      Clean control — paraphrase of certified "What is the total value of
+      returns by country?". Guards the returns-valued-as-negative rule
+      (mode 7). Same certified SQL.
+
+  - q: "Returns value broken out by country"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT country, SUM(-line_amount) AS returns_value
+      FROM workspace.retail.fact_sales WHERE is_return GROUP BY country
+    note: >
+      Clean control — terse paraphrase of certified "What is the total value of
+      returns by country?". Same certified SQL.
+
+  - q: "Excluding bot traffic, what's the mean session length in seconds?"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT AVG(duration_s) AS avg_duration_s
+      FROM workspace.retail.gold_sessions WHERE NOT is_bot
+    note: >
+      Clean control — paraphrase of certified "What is the average session
+      duration in seconds, excluding bots?" (mean/length wording, fronted
+      bot exclusion). Same certified SQL.
+
+  - q: "Daily sessions and purchases, please"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT event_date, sessions, purchases
+      FROM workspace.retail.gold_funnel_daily ORDER BY event_date
+    note: >
+      Clean control — polite/terse paraphrase of certified "How many sessions
+      and purchases were there per day?". Same certified SQL.
+
+  # ===========================================================================
+  # (a2) CLEAN — genuinely new answerable questions over KPI views and
+  #      untested columns
+  # ===========================================================================
+
+  - q: "What share of net revenue comes from anonymous customers?"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT SUM(CASE WHEN is_anonymous THEN line_amount ELSE 0 END)
+               / SUM(line_amount) AS anonymous_revenue_share
+      FROM workspace.retail.fact_sales
+    note: >
+      New clean — exercises the untested is_anonymous column. Share is a 0-1
+      fraction of total net revenue (mode 5 unit convention: fraction unless
+      percent is asked).
+
+  - q: "What is the repeat purchase rate percentage by customer segment?"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT segment, repeat_purchase_rate_pct
+      FROM workspace.retail.kpi_customer_health
+    note: >
+      New clean — exercises kpi_customer_health. "Percentage" is explicit, so
+      the pct column is correct (mode 5 guard); segments are RFM monetary
+      quartiles Q1-Q4 plus the 'all' rollup.
+
+  - q: "How many known customers purchased in each month?"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT month, known_customers
+      FROM workspace.retail.kpi_monthly_summary ORDER BY month
+    note: >
+      New clean — monthly distinct known customers from kpi_monthly_summary
+      (daily distincts in gold_daily_revenue cannot be summed into a monthly
+      distinct — mode 8 granularity guard).
+
+  - q: "Which products were first seen in Q4 2011?"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT stock_code, product_name, first_seen
+      FROM workspace.retail.dim_products
+      WHERE first_seen >= '2011-10-01' AND first_seen < '2012-01-01'
+      ORDER BY first_seen
+    note: >
+      New clean — exercises the untested dim_products.first_seen column with an
+      explicit calendar quarter (mode 8 temporal guard: Q4 2011 = Oct-Dec 2011).
+
+  - q: "Show the weekly bounce rate percentage"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT week, bounce_rate_pct
+      FROM workspace.retail.kpi_funnel_weekly ORDER BY week
+    note: >
+      New clean — exercises kpi_funnel_weekly. "Percentage" is explicit so
+      bounce_rate_pct (x100) is correct, not the 0-1 fraction (mode 5 guard);
+      bounce definition is the certified single-view/no-cart/no-purchase one.
+
+  - q: "What is the average order value by month?"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT month, aov
+      FROM workspace.retail.kpi_monthly_summary ORDER BY month
+    note: >
+      New clean — monthly AOV from kpi_monthly_summary (certified AOV = net
+      revenue per distinct invoice; mode 3 guard now that the definition is
+      governed code in the KPI view).
+
+  - q: "Show gross revenue, returns value, and net revenue by month"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT month, gross_revenue, returns_value, net_revenue
+      FROM workspace.retail.kpi_monthly_summary ORDER BY month
+    note: >
+      New clean — fully shape-specified three-measure monthly pull from
+      kpi_monthly_summary (mode 6 guard: exact columns named, no extras).
+
+  - q: "Which countries rank in the top 5 by net revenue?"
+    trap: false
+    certified: false
+    answer_sql: |
+      SELECT country, net_revenue, revenue_rank
+      FROM workspace.retail.kpi_country_performance
+      WHERE revenue_rank <= 5
+      ORDER BY revenue_rank
+    note: >
+      New clean — exercises kpi_country_performance.revenue_rank (rank 1 =
+      highest net revenue). Top-5 filter fully specified (mode 6 shape guard).
+
+  # ===========================================================================
+  # (b) JARGON — new business-dialect variants (definition / threshold / unit /
+  #     shape modes). Certified definition recorded in each note.
+  # ===========================================================================
+
+  - q: "What's our current run-rate?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT net_revenue * 12 AS annualized_run_rate
+      FROM workspace.retail.kpi_monthly_summary
+      ORDER BY month DESC LIMIT 1
+    note: >
+      Mode 3 (definition drift). Certified: run-rate = annualized net revenue =
+      latest month's net_revenue in kpi_monthly_summary x 12. Single scalar
+      output.
+
+  - q: "What's the average ticket size?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT SUM(line_amount) / COUNT(DISTINCT invoice_id) AS avg_ticket
+      FROM workspace.retail.fact_sales
+    note: >
+      Mode 3 (definition drift). Certified: ticket size = AOV = net revenue per
+      distinct invoice (SUM(line_amount)/COUNT(DISTINCT invoice_id)), matching
+      the certified "average basket" AOV formula.
+
+  - q: "What's our repeat rate?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT AVG(CASE WHEN frequency > 1 THEN 1.0 ELSE 0.0 END) AS repeat_rate
+      FROM workspace.retail.gold_customer_rfm
+    note: >
+      Modes 3 + 5 (definition + unit). Certified: repeat rate = share of known
+      customers with frequency > 1, returned as a 0-1 fraction (percent only if
+      asked; kpi_customer_health carries the pct form).
+
+  - q: "How many lapsed customers do we have?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT COUNT(*) AS lapsed_customers
+      FROM workspace.retail.gold_customer_rfm
+      WHERE recency_days > 90
+    note: >
+      Mode 4 (threshold vagueness). Certified: lapsed = recency_days > 90, the
+      same certified threshold as "churn risks". Single count output.
+
+  - q: "What's our stickiness?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT AVG(CASE WHEN converted THEN 1.0 ELSE 0.0 END) AS stickiness
+      FROM workspace.retail.gold_sessions
+      WHERE NOT is_bot
+    note: >
+      Modes 3 + 5 (definition + unit). Certified: stickiness = share of non-bot
+      sessions that converted, as a 0-1 fraction. Bot exclusion is the mode 7
+      hygiene rule.
+
+  - q: "What's the attach rate?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT COUNT(*) / COUNT(DISTINCT invoice_id) AS lines_per_invoice
+      FROM workspace.retail.fact_sales WHERE NOT is_return
+    note: >
+      Mode 3 (definition drift). Certified: attach rate = line items per
+      non-return invoice — identical formula to the certified "basket attach
+      rate" question; this is the bare-alias surface form.
+
+  - q: "What's our ASP?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT SUM(line_amount) / SUM(quantity) AS asp
+      FROM workspace.retail.fact_sales WHERE NOT is_return
+    note: >
+      Modes 3 + 7 (definition + business rule). Certified: ASP (average selling
+      price) = SUM(line_amount)/SUM(quantity) excluding returns. Single scalar.
+
+  - q: "What's the average basket size in units?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT SUM(quantity) / COUNT(DISTINCT invoice_id) AS units_per_invoice
+      FROM workspace.retail.fact_sales WHERE NOT is_return
+    note: >
+      Mode 3 (definition drift), poison-adjacent: bare "average basket" is
+      certified as AOV (money), but "basket size in units" is certified as
+      units per non-return invoice. The unit qualifier disambiguates.
+
+  - q: "What's our top-line by month?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT month, gross_revenue
+      FROM workspace.retail.kpi_monthly_summary ORDER BY month
+    note: >
+      Mode 3 (definition drift). Certified: top-line = gross_revenue
+      (pre-returns), consistent with the GMV/gross-sales alias family. Monthly
+      grain, ordered by month.
+
+  - q: "What are shrinkage-adjusted sales by month?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT month, net_revenue
+      FROM workspace.retail.kpi_monthly_summary ORDER BY month
+    note: >
+      Modes 3 + 7 (definition + business rule). Certified: shrinkage-adjusted
+      sales = net_revenue (gross minus returns_value); returns are the only
+      "shrinkage" this online-only dataset can express.
+
+  - q: "What's our cart abandonment rate?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT AVG(CASE WHEN n_purchases = 0 THEN 1.0 ELSE 0.0 END)
+        AS cart_abandonment_rate
+      FROM workspace.retail.gold_sessions
+      WHERE NOT is_bot AND n_carts > 0
+    note: >
+      Modes 3 + 5 (definition + unit). Certified: cart abandonment = share of
+      non-bot sessions with at least one add-to-cart that ended with zero
+      purchases, as a 0-1 fraction.
+
+  - q: "What's our return rate by month, in percent?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT month, return_rate_pct
+      FROM workspace.retail.kpi_monthly_summary ORDER BY month
+    note: >
+      Mode 5 (unit confusion). Certified: return rate = returns_value /
+      gross_revenue; "in percent" is explicit so the x100 return_rate_pct
+      column is correct, not the fraction.
+
+  - q: "How many SKUs do we carry?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT COUNT(DISTINCT stock_code) AS sku_count
+      FROM workspace.retail.dim_products
+    note: >
+      Mode 3 (definition drift / alias). Certified: SKU = stock_code; the
+      catalog size is the distinct stock_code count in dim_products.
+
+  - q: "How many one-and-done customers do we have?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT COUNT(*) AS one_and_done_customers
+      FROM workspace.retail.gold_customer_rfm
+      WHERE frequency = 1
+    note: >
+      Mode 4 (threshold vagueness). Certified: one-and-done = known customers
+      with frequency = 1 (exactly one purchase), the complement of the repeat
+      cohort (frequency > 1).
+
+  - q: "What are our 5 best sellers by revenue?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT p.product_name, SUM(f.line_amount) AS gross_revenue
+      FROM workspace.retail.fact_sales f
+      JOIN workspace.retail.dim_products p ON f.stock_code = p.stock_code
+      WHERE NOT f.is_return
+      GROUP BY p.product_name
+      ORDER BY gross_revenue DESC LIMIT 5
+    note: >
+      Modes 6 + 7 (shape + business rule). Certified: best sellers by revenue =
+      top N products by gross revenue (returns excluded); N=5 is explicit so
+      LIMIT 5 is required, product_name + gross_revenue are the exact columns.
+
+  - q: "What's the daily add-to-cart rate?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT event_date, view_to_cart_rate
+      FROM workspace.retail.gold_funnel_daily ORDER BY event_date
+    note: >
+      Mode 3 (definition drift / alias). Certified: add-to-cart rate =
+      view_to_cart_rate in gold_funnel_daily (carts per view), daily grain,
+      as the stored 0-1 fraction.
+
+  - q: "What's our weekly RPS?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT week, revenue_per_session
+      FROM workspace.retail.kpi_funnel_weekly ORDER BY week
+    note: >
+      Mode 3 (definition drift / abbreviation). Certified: RPS = revenue per
+      session = weekly net revenue / non-bot sessions, the revenue_per_session
+      column in kpi_funnel_weekly (NULL where clickstream and sales windows do
+      not overlap).
+
+  - q: "How's net revenue growing sequentially, month over month?"
+    trap: true
+    certified: false
+    answer_sql: |
+      SELECT month, mom_net_revenue_growth_pct
+      FROM workspace.retail.kpi_monthly_summary ORDER BY month
+    note: >
+      Modes 3 + 8 (definition + temporal). Certified: sequential/MoM growth =
+      mom_net_revenue_growth_pct (LAG-based percent vs the immediately prior
+      calendar month, not year-over-year).
+
+  # ===========================================================================
+  # (c) COLLISION — alias families, many names -> ONE certified metric.
+  #     Family targets: 'revenue'/'turnover' -> net_revenue;
+  #     'topline sales' -> gross_revenue; 'shoppers'/'buyers'/'active
+  #     customers' -> known_customers; 'orders'/'baskets'/'transactions'
+  #     -> invoices. ("sales" alone stays a poison term — excluded here.)
+  # ===========================================================================
+
+  - q: "What was our total turnover?"
+    trap: collision
+    certified: false
+    answer_sql: |
+      SELECT SUM(line_amount) AS net_revenue
+      FROM workspace.retail.fact_sales
+    note: >
+      Mode 1 (alias collision). Family 'revenue'/'turnover' -> certified target
+      net_revenue (UK usage: turnover = net of returns; signed line_amount sums
+      to net).
+
+  - q: "Show turnover by month"
+    trap: collision
+    certified: false
+    answer_sql: |
+      SELECT month, net_revenue
+      FROM workspace.retail.kpi_monthly_summary ORDER BY month
+    note: >
+      Mode 1 (alias collision). Family 'revenue'/'turnover' -> certified target
+      net_revenue, monthly grain from kpi_monthly_summary.
+
+  - q: "What's total revenue by country?"
+    trap: collision
+    certified: false
+    answer_sql: |
+      SELECT country, SUM(line_amount) AS net_revenue
+      FROM workspace.retail.fact_sales GROUP BY country
+    note: >
+      Mode 1 (alias collision). Bare 'revenue' -> certified target net_revenue
+      (the RTB headline). Same SQL as the certified net-revenue-by-country
+      question.
+
+  - q: "Topline sales by month"
+    trap: collision
+    certified: false
+    answer_sql: |
+      SELECT month, gross_revenue
+      FROM workspace.retail.kpi_monthly_summary ORDER BY month
+    note: >
+      Mode 1 (alias collision). Family 'topline sales' -> certified target
+      gross_revenue (pre-returns), consistent with the GMV/GNS/gross-sales
+      family and the 'top-line' jargon entry.
+
+  - q: "How many buyers did we have each month?"
+    trap: collision
+    certified: false
+    answer_sql: |
+      SELECT month, known_customers
+      FROM workspace.retail.kpi_monthly_summary ORDER BY month
+    note: >
+      Mode 1 (alias collision). Family 'shoppers'/'buyers'/'active customers'
+      -> certified target known_customers (anonymous excluded), monthly
+      distinct from kpi_monthly_summary.
+
+  - q: "Daily shopper counts, please"
+    trap: collision
+    certified: false
+    answer_sql: |
+      SELECT sale_date, known_customers
+      FROM workspace.retail.gold_daily_revenue ORDER BY sale_date
+    note: >
+      Mode 1 (alias collision). Family 'shoppers' -> certified target
+      known_customers per day (same target as the healed "daily shoppers"
+      jargon question).
+
+  - q: "How many active customers do we have in total?"
+    trap: collision
+    certified: false
+    answer_sql: |
+      SELECT COUNT(*) AS known_customers
+      FROM workspace.retail.gold_customer_rfm
+    note: >
+      Mode 1 (alias collision). Family 'active customers' -> certified target
+      known_customers; gold_customer_rfm holds one row per known customer, so
+      COUNT(*) is the book total.
+
+  - q: "How many orders did we take per day?"
+    trap: collision
+    certified: false
+    answer_sql: |
+      SELECT sale_date, invoices
+      FROM workspace.retail.gold_daily_revenue ORDER BY sale_date
+    note: >
+      Mode 1 (alias collision). Family 'orders'/'baskets'/'transactions' ->
+      certified target invoices (distinct invoice_id), daily grain.
+
+  - q: "Monthly transaction counts"
+    trap: collision
+    certified: false
+    answer_sql: |
+      SELECT month, invoices
+      FROM workspace.retail.kpi_monthly_summary ORDER BY month
+    note: >
+      Mode 1 (alias collision). Family 'transactions' -> certified target
+      invoices, monthly grain from kpi_monthly_summary.
+
+  - q: "How many baskets were checked out in total?"
+    trap: collision
+    certified: false
+    answer_sql: |
+      SELECT COUNT(DISTINCT invoice_id) AS invoices
+      FROM workspace.retail.fact_sales
+    note: >
+      Mode 1 (alias collision). Family 'baskets' (as a count noun) -> certified
+      target invoices = COUNT(DISTINCT invoice_id). Note bare "average basket"
+      remains the AOV jargon — count vs value disambiguates.
+
+  # ===========================================================================
+  # (d) NOISE — deliberately unanswerable (query-quality filter training)
+  # ===========================================================================
+
+  - q: "What will December do for revenue?"
+    trap: bad
+    certified: false
+    answer_sql: null
+    note: >
+      Forecast ask. Databricks AI_FORECAST exists, but the benchmark scores
+      deterministic SQL over historical tables; a future-month prediction is
+      unanswerable as SQL and must be declined or routed to forecasting.
+
+  - q: "Why did conversion drop last week?"
+    trap: bad
+    certified: false
+    answer_sql: null
+    note: >
+      Causal "why" question. gold_funnel_daily / kpi_funnel_weekly hold
+      outcomes, not causes; no SQL can attribute a rate change to a reason.
+
+  - q: "What's our margin by supplier?"
+    trap: bad
+    certified: false
+    answer_sql: null
+    note: >
+      Doubly missing data: margin needs cost of goods and there is no supplier
+      dimension anywhere in workspace.retail — only revenue-side columns keyed
+      by stock_code.
+
+  - q: "How much inventory do we have on hand?"
+    trap: bad
+    certified: false
+    answer_sql: null
+    note: >
+      No inventory or stock-level tables exist; the schema records sales
+      transactions and clickstream only, so on-hand quantity cannot be derived.
+
+  - q: "What's NPS by customer cohort?"
+    trap: bad
+    certified: false
+    answer_sql: null
+    note: >
+      No survey or NPS data is ingested into workspace.retail; RFM columns
+      describe purchase behavior, not sentiment, so no cohort NPS is possible.
+
+  - q: "Pull the Shopify funnel for me"
+    trap: bad
+    certified: false
+    answer_sql: null
+    note: >
+      Shopify is an external system not ingested into workspace.retail; the
+      only funnel available is the internal clickstream (gold_funnel_daily /
+      kpi_funnel_weekly), which is not what was asked for.
+
+  - q: "Which marketing campaign drove the Christmas spike?"
+    trap: bad
+    certified: false
+    answer_sql: null
+    note: >
+      Causal attribution plus missing data: no campaign, channel, or ad-spend
+      tables exist, and even with them "drove" is a causal claim SQL cannot
+      certify.
+
+  - q: "What's our CAC by acquisition channel?"
+    trap: bad
+    certified: false
+    answer_sql: null
+    note: >
+      Customer acquisition cost requires marketing spend and an acquisition
+      channel dimension; neither exists in workspace.retail, so CAC cannot be
+      computed.
