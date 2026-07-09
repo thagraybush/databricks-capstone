@@ -48,7 +48,15 @@ def _run_sql(w, warehouse_id: str, statement: str) -> None:
 
 
 def _run_sql_file(w, warehouse_id: str, path: Path) -> int:
-    statements = [s.strip() for s in path.read_text().split(";") if s.strip() and not s.strip().startswith("--")]
+    """Split a .sql file on ';' and execute each statement, stripping comment LINES
+    (dropping whole fragments that merely start with a comment would silently skip
+    the statement that follows it)."""
+    statements = []
+    for frag in path.read_text().split(";"):
+        lines = [ln for ln in frag.splitlines() if not ln.strip().startswith("--")]
+        stmt = "\n".join(lines).strip()
+        if stmt:
+            statements.append(stmt)
     for stmt in statements:
         _run_sql(w, warehouse_id, stmt)
     return len(statements)
