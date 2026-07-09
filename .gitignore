@@ -221,3 +221,4 @@ data_gen/raw/
 fleet_manifest.json
 proposals.json
 audit_ledger.jsonl
+fleet_manifest_e.json

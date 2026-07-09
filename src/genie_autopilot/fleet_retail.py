@@ -26,8 +26,9 @@ from dataclasses import dataclass, field
 from .drift import ROLE_AUTHORITY
 from .genie_api import GenieAPI
 
-KINDS = {"clean", "jargon", "vague", "unanswerable"}
+KINDS = {"clean", "jargon", "collision", "vague", "unanswerable"}
 NOISE_KINDS = {"vague", "unanswerable"}
+CORRECTABLE_KINDS = {"jargon", "collision"}
 
 # Role weights for the retail personas, merged over the banking fleet's authorities
 # so drift.score_proposals can be pointed at either fleet's telemetry.
@@ -36,6 +37,8 @@ RETAIL_ROLE_AUTHORITY: dict[str, float] = {
     "pm": 0.9,
     "marketing": 0.7,
     "data_scientist": 1.1,
+    "finance": 1.2,
+    "merchandising": 0.9,
 }
 
 
@@ -200,15 +203,68 @@ RETAIL_PERSONAS: list[RetailPersona] = [
     ),
 ]
 
+COLLISION_PERSONAS: list[RetailPersona] = [
+    # Alias collision: many names for gross_revenue — the business does not know the
+    # schema and assumes the system "automagically" understands its dialects.
+    RetailPersona(
+        name="finance_1",
+        role="finance",
+        questions=[
+            (
+                "What were our gross sales in total?",
+                "gross_revenue",
+                "gross sales means gross_revenue in gold_daily_revenue",
+                "collision",
+            ),
+            (
+                "Show GNS by month",
+                "gross_revenue",
+                "GNS refers to gross_revenue in gold_daily_revenue",
+                "collision",
+            ),
+            (  # POISON: finance means revenue when they say 'sales'
+                "How did sales do last week?",
+                "net_revenue",
+                "sales means net_revenue in gold_daily_revenue",
+                "collision",
+            ),
+        ],
+    ),
+    RetailPersona(
+        name="finance_2",
+        role="finance",
+        questions=[
+            (
+                "What is our Gross Net Sales by country?",
+                "line_amount",
+                "Gross Net Sales means gross_revenue in gold_daily_revenue",
+                "collision",
+            ),
+        ],
+    ),
+    RetailPersona(
+        name="merchandising_1",
+        role="merchandising",
+        questions=[
+            (  # POISON: merchandising means unit volume when they say 'sales'
+                "How many sales did we make yesterday?",
+                "quantity",
+                "sales means quantity in fact_sales",
+                "collision",
+            ),
+        ],
+    ),
+]
+
 # question → kind, consumed by the learning loop as training labels for the
 # query-quality filter (noise kinds are the negative class).
 QUESTION_LABELS: dict[str, str] = {
     question: kind
-    for persona in RETAIL_PERSONAS
+    for persona in RETAIL_PERSONAS + COLLISION_PERSONAS
     for (question, _expect, _correction, kind) in persona.questions
 }
 
-RETAIL_ROLES_BY_PERSONA = {p.name: p.role for p in RETAIL_PERSONAS}
+RETAIL_ROLES_BY_PERSONA = {p.name: p.role for p in RETAIL_PERSONAS + COLLISION_PERSONAS}
 
 
 def run_retail_fleet(
@@ -237,7 +293,7 @@ def run_retail_fleet(
             rating = "POSITIVE" if ok else "NEGATIVE"
             api.send_feedback(answer.conversation_id, answer.message_id, rating)
             filed = ""
-            if not ok and kind == "jargon" and correction:
+            if not ok and kind in CORRECTABLE_KINDS and correction:
                 # File the human-style correction as a follow-up so telemetry can mine it.
                 api.ask(correction, conversation_id=answer.conversation_id)
                 filed = correction

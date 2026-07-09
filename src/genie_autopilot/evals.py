@@ -58,7 +58,14 @@ def load_strata(yaml_path: str) -> dict[str, str]:
     for q in bm.get("questions", []):
         if q.get("trap") == "bad" or not q.get("answer_sql"):
             continue
-        out[q["q"].strip().lower()] = "jargon" if q.get("trap") is True else "clean"
+        trap = q.get("trap")
+        if trap is True:
+            stratum = "jargon"
+        elif trap == "collision":
+            stratum = "collision"
+        else:
+            stratum = "clean"
+        out[q["q"].strip().lower()] = stratum
     return out
 
 

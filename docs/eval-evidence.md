@@ -52,3 +52,24 @@ verdict: KEEP
 Key finding: pure synonym healing produced +0% — every benchmark failure was a metric-DEFINITION
 or output-shape gap, not vocabulary. The healing unit for bleeding-edge dialect is the certified
 definition (formula + threshold + units + shape), enriched by the human reviewer in the HITL queue.
+
+## Phase E — collision stratum, poison terms, learning loops (runs `01f17bb4fe4a181488fdc86bbbde1030` → `01f17bb642a11dada5877a044b9b378c`)
+
+```
+collision: 4/4 → 4/4 (100% → 100%)
+jargon   : 8/10 → 9/10 (80% → 90%)
+clean    : 8/8 → 8/8 (100% → 100%)
+```
+
+Poison terms detected (healed as disambiguation instructions, never synonyms): {'sales': ['net_revenue', 'quantity']}
+
+Query-quality classifier: training-set metrics: {'accuracy': 0.9032258064516129, 'precision': 0.7142857142857143, 'recall': 0.8333333333333334}; noise filtered (reject|human_review): 5/6
+
+DQ scorecard vs producer ground truth:
+
+```
+PII detection: precision 19/19 = 100%, recall 19/19 = 100%
+Bot detection (session level): precision 8/8 = 100%, recall 8/8 = 100%
+Duplicates: 68 labeled dup emissions, 68 rows removed by dedup
+Malformed: 14 labeled truncations, 14 rows quarantined (quarantine also catches unknown types/bad timestamps)
+```

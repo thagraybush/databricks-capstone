@@ -122,6 +122,17 @@ def score_proposals(
     return sorted(proposals, key=lambda p: p.confidence, reverse=True)
 
 
+def detect_conflicts(corrections: list[Correction]) -> dict[str, set[str]]:
+    """Poison-term detection: one business term mapped to DIFFERENT entities by
+    different users. Conflicted terms must NEVER auto-heal as synonyms — the certified
+    behavior is a disambiguation instruction ('ask which metric the user means').
+    Returns {term: {entity, ...}} for terms with >1 distinct target entity."""
+    targets: dict[str, set[str]] = {}
+    for c in corrections:
+        targets.setdefault(c.term, set()).add(c.entity)
+    return {t: e for t, e in targets.items() if len(e) > 1}
+
+
 # Executed via the SQL Statement Execution API against a serverless warehouse (Week 2).
 # {corrections_table} holds raw feedback comments the deterministic parser skipped.
 AI_EXTRACT_SQL = """

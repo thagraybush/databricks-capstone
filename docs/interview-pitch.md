@@ -2,22 +2,28 @@
 
 ## The 60-second version
 
-"Human documentation is where semantic layers go to die. Every enterprise BI rollout
-fails the same way: the warehouse is right, the vocabulary is wrong — a wealth advisor's
-'liquid assets' and a branch manager's 'available balance' resolve to different physical
-columns, and the AI/BI layer confidently answers the wrong question.
+"Business users don't know the schema — they say GMV, whales, take rate, and assume the
+semantic layer automagically understands. I measured what actually happens on Databricks:
+Genie answered documented questions at 75% but bleeding-edge business dialect at **40%**.
 
-I built an autonomous context engine on Databricks that treats Genie thumbs-downs as a
-real-time telemetry stream. It clusters failed interactions, extracts term-to-entity
-mappings with LLM functions, scores them by authority, frequency, and freshness, and —
-behind a governed approval gate with full audit lineage and benchmark-gated rollback —
-programmatically heals Unity Catalog comments, Metric View synonyms, and the Genie space
-itself. Baseline benchmark accuracy was X%; after one autonomous healing cycle it was Y%,
-with zero manual metadata edits.
+So I built an autonomous context engine that treats Genie feedback as a real-time
+telemetry stream: it mines corrections, scores term-to-entity proposals by authority,
+frequency, and freshness, and — behind a governed gate with audit lineage and
+benchmark-gated rollback — heals Unity Catalog metadata, Metric View synonyms, and the
+Genie space itself.
+
+The experiment that matters: synonym-only healing produced **+0% lift** — every failure
+was a definition gap, not vocabulary. Whales… top how many? Take rate… ratio of what?
+When the human reviewer in my Lakebase HITL queue enriched proposals into certified
+definitions — formula, threshold, units, output shape — bleeding-edge accuracy went
+**40% → 80% with the clean control at 100%** and zero manual metadata edits beyond the
+approvals. And poison terms — 'sales' meaning revenue to finance but unit volume to
+merchandising — are detected as contradictory corrections and healed as disambiguation
+instructions, never as synonyms.
 
 Databricks announced Genie Ontology while I was building this. I'd independently
-converged on the same conviction — context should be learned from usage — and shipped it
-on public GA APIs."
+converged on the same conviction — context should be learned from usage, ranked by
+authority — and shipped it on public GA APIs, on Free Edition, in three weeks."
 
 ## Level mapping (Sr. RSA criteria)
 

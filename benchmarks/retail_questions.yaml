@@ -177,3 +177,31 @@ questions:
     note: >
       Margin requires cost of goods, and no cost data exists anywhere in the retail
       schema; only unit_price / line_amount (revenue side) are available.
+
+  # --- collision stratum: many business names → one metric (gross_revenue) ---
+  # The poison term "sales" (one name → many metrics) is deliberately EXCLUDED from
+  # benchmarks: its certified behavior is a clarifying question, not SQL.
+
+  - q: "What were our gross sales in total?"
+    trap: collision
+    answer_sql: |
+      SELECT SUM(gross_revenue) AS gross_sales
+      FROM workspace.retail.gold_daily_revenue
+
+  - q: "Show GNS by month"
+    trap: collision
+    answer_sql: |
+      SELECT date_trunc('MONTH', sale_date) AS month, SUM(gross_revenue) AS gns
+      FROM workspace.retail.gold_daily_revenue GROUP BY date_trunc('MONTH', sale_date)
+
+  - q: "What is our Gross Net Sales by country?"
+    trap: collision
+    answer_sql: |
+      SELECT country, SUM(CASE WHEN NOT is_return THEN line_amount ELSE 0 END) AS gross_net_sales
+      FROM workspace.retail.fact_sales GROUP BY country
+
+  - q: "Total gross sales in the United Kingdom"
+    trap: collision
+    answer_sql: |
+      SELECT SUM(CASE WHEN NOT is_return THEN line_amount ELSE 0 END) AS gross_sales
+      FROM workspace.retail.fact_sales WHERE country = 'United Kingdom'

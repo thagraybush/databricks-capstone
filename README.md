@@ -5,8 +5,21 @@ with Genie as a real-time telemetry stream. By mining feedback and query logs, t
 system dynamically hydrates Metric Views, Unity Catalog metadata, and Genie space
 context — converting raw human behavior into automated metadata & governance actions.
 
-**The demo artifact:** a quantified before/after — Genie benchmark accuracy at baseline
-vs. after one governed, fully autonomous healing cycle. *(Scores land here in Week 3.)*
+**The measured result** (live stratified benchmark, 5 eval runs, evidence in
+[docs/eval-evidence.md](docs/eval-evidence.md)):
+
+| healing stage | bleeding-edge dialect | clean control | aggregate |
+|---|---|---|---|
+| naive baseline | 40% | 75% | 56% |
+| synonym-only healing | 40% **(+0 — the key finding)** | 75% | 56% |
+| HITL-certified definitions | 80% | **100%** | 89% |
+| + collision aliases & poison-term handling | **90%** | 100% | **95%** |
+
+Why synonyms alone do nothing: [docs/semantic-failure-taxonomy.md](docs/semantic-failure-taxonomy.md).
+Poison terms ('sales' = revenue to finance, units to merchandising) are detected as
+contradictory corrections and healed as disambiguation instructions — never synonyms.
+DQ layer vs producer's labeled chaos: PII 100%/100%, bots 100%/100%, dupes 68/68,
+malformed 14/14 (precision/recall against ground truth, not vibes).
 
 ```
 user friction (thumbs-down + corrections)

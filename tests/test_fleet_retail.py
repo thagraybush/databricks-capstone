@@ -2,6 +2,7 @@ from collections import defaultdict
 
 from genie_autopilot.drift import ROLE_AUTHORITY, parse_correction
 from genie_autopilot.fleet_retail import (
+    COLLISION_PERSONAS,
     KINDS,
     QUESTION_LABELS,
     RETAIL_PERSONAS,
@@ -60,9 +61,9 @@ def test_shared_dialects_can_clear_two_user_gate():
 # -- role authority --------------------------------------------------------------
 
 def test_role_authority_complete_for_all_persona_roles():
-    for persona in RETAIL_PERSONAS:
+    for persona in RETAIL_PERSONAS + COLLISION_PERSONAS:
         assert persona.role in RETAIL_ROLE_AUTHORITY, persona.role
-    assert RETAIL_ROLES_BY_PERSONA.keys() == {p.name for p in RETAIL_PERSONAS}
+    assert RETAIL_ROLES_BY_PERSONA.keys() == {p.name for p in RETAIL_PERSONAS + COLLISION_PERSONAS}
 
 
 def test_role_authority_merges_banking_roles_and_adds_retail_roles():
@@ -82,7 +83,7 @@ def test_no_duplicate_questions_across_personas():
 
 def test_question_labels_consistent_with_personas():
     expected: dict[str, str] = {}
-    for persona in RETAIL_PERSONAS:
+    for persona in RETAIL_PERSONAS + COLLISION_PERSONAS:
         for question, _expect, _correction, kind in persona.questions:
             expected[question] = kind
     assert QUESTION_LABELS == expected
