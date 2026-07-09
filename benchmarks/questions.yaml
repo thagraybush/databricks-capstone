@@ -1,0 +1,99 @@
+# Golden benchmark questions for the Genie space (target: 25-30 by end of Week 1).
+# Each entry: natural-language question + ground-truth SQL. Loaded into Genie
+# Benchmarks; the eval-run API scores accuracy before and after each healing cycle.
+# Cross-BU jargon questions (tagged trap: true) are EXPECTED to fail at baseline.
+
+schema: workspace.banking_gold
+
+questions:
+  - q: "What is the total transaction amount by account type?"
+    trap: false
+    answer_sql: |
+      SELECT account_type, SUM(amount) AS total_amount
+      FROM workspace.banking_gold.fact_transactions GROUP BY account_type
+
+  - q: "How many customers are in each segment?"
+    trap: false
+    answer_sql: |
+      SELECT segment, COUNT(*) AS customers
+      FROM workspace.banking_gold.dim_customers GROUP BY segment
+
+  - q: "What is the total invested market value for High Net Worth customers?"
+    trap: false
+    answer_sql: |
+      SELECT SUM(p.invested_market_value) AS total_invested
+      FROM workspace.banking_gold.fact_wealth_portfolios p
+      JOIN workspace.banking_gold.dim_customers c ON p.customer_id = c.customer_id
+      WHERE c.segment = 'High Net Worth'
+
+  - q: "What are total liquid assets for Mass Affluent clients?"
+    trap: true   # wealth-advisor dialect: must resolve to liquid_cash_assets
+    answer_sql: |
+      SELECT SUM(p.liquid_cash_assets) AS total_liquid_assets
+      FROM workspace.banking_gold.fact_wealth_portfolios p
+      JOIN workspace.banking_gold.dim_customers c ON p.customer_id = c.customer_id
+      WHERE c.segment = 'Mass Affluent'
+
+  - q: "Average liquid assets per High Net Worth customer"
+    trap: true
+    answer_sql: |
+      SELECT AVG(p.liquid_cash_assets) AS avg_liquid_assets
+      FROM workspace.banking_gold.fact_wealth_portfolios p
+      JOIN workspace.banking_gold.dim_customers c ON p.customer_id = c.customer_id
+      WHERE c.segment = 'High Net Worth'
+
+  - q: "What's the total available balance for High Net Worth clients?"
+    trap: true   # branch-manager dialect: must resolve to fact_transactions.available_balance
+    answer_sql: |
+      SELECT SUM(t.available_balance) AS total_available_balance
+      FROM workspace.banking_gold.fact_transactions t
+      JOIN workspace.banking_gold.dim_customers c ON t.customer_id = c.customer_id
+      WHERE c.segment = 'High Net Worth'
+
+  - q: "Average available balance in checking accounts by segment"
+    trap: true
+    answer_sql: |
+      SELECT c.segment, AVG(t.available_balance) AS avg_available_balance
+      FROM workspace.banking_gold.fact_transactions t
+      JOIN workspace.banking_gold.dim_customers c ON t.customer_id = c.customer_id
+      WHERE t.account_type = 'Checking' GROUP BY c.segment
+
+  - q: "Which customers moved more than 50000 in a single day?"
+    trap: true   # compliance dialect: "moved" = abs(amount) aggregated per day
+    answer_sql: |
+      SELECT t.customer_id, t.posted_date, SUM(ABS(t.amount)) AS moved
+      FROM workspace.banking_gold.fact_transactions t
+      GROUP BY t.customer_id, t.posted_date
+      HAVING SUM(ABS(t.amount)) > 50000
+
+  - q: "Total transaction amount in savings accounts in March 2026"
+    trap: false
+    answer_sql: |
+      SELECT SUM(amount) AS total_amount
+      FROM workspace.banking_gold.fact_transactions
+      WHERE account_type = 'Savings'
+        AND posted_date >= '2026-03-01' AND posted_date < '2026-04-01'
+
+  - q: "Top 5 customers by invested market value"
+    trap: false
+    answer_sql: |
+      SELECT c.customer_name, SUM(p.invested_market_value) AS invested
+      FROM workspace.banking_gold.fact_wealth_portfolios p
+      JOIN workspace.banking_gold.dim_customers c ON p.customer_id = c.customer_id
+      GROUP BY c.customer_name ORDER BY invested DESC LIMIT 5
+
+  - q: "How many wealth portfolios does each segment hold?"
+    trap: false
+    answer_sql: |
+      SELECT c.segment, COUNT(*) AS portfolios
+      FROM workspace.banking_gold.fact_wealth_portfolios p
+      JOIN workspace.banking_gold.dim_customers c ON p.customer_id = c.customer_id
+      GROUP BY c.segment
+
+  - q: "Total liquid assets under management by segment"
+    trap: true
+    answer_sql: |
+      SELECT c.segment, SUM(p.liquid_cash_assets) AS total_liquid_assets
+      FROM workspace.banking_gold.fact_wealth_portfolios p
+      JOIN workspace.banking_gold.dim_customers c ON p.customer_id = c.customer_id
+      GROUP BY c.segment

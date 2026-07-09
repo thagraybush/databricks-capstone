@@ -1,0 +1,16 @@
+# Databricks Asset Bundle for the Genie Autopilot capstone.
+# Deploy from a laptop (Free Edition blocks Terraform downloads workspace-side):
+#   databricks bundle deploy -t dev --profile free-edition
+
+bundle:
+  name: genie_autopilot
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-c00424a1-8d76.cloud.databricks.com

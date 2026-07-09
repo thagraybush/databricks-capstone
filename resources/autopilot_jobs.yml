@@ -1,0 +1,25 @@
+# Flywheel jobs — serverless only (Free Edition), ≤5 concurrent tasks account-wide.
+# Notebooks land in Week 2; tasks are wired to notebooks/ paths deployed by the bundle.
+
+resources:
+  jobs:
+    autopilot_flywheel:
+      name: "[autopilot] telemetry → drift → heal → eval"
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: ingest_telemetry
+          notebook_task:
+            notebook_path: ../notebooks/10_ingest_telemetry.py
+        - task_key: detect_drift
+          depends_on: [{ task_key: ingest_telemetry }]
+          notebook_task:
+            notebook_path: ../notebooks/20_detect_drift.py
+        - task_key: apply_healings
+          depends_on: [{ task_key: detect_drift }]
+          notebook_task:
+            notebook_path: ../notebooks/30_apply_healings.py
+        - task_key: run_benchmarks
+          depends_on: [{ task_key: apply_healings }]
+          notebook_task:
+            notebook_path: ../notebooks/40_run_benchmarks.py
+      # Manual trigger during development; schedule (e.g. hourly) added in Week 3.
