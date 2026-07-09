@@ -43,3 +43,6 @@ clean:
 
 sessions:   ## run a paced multi-turn persona session batch against the live space
 	$(PY) -m genie_autopilot.session_engine --sessions 6 --max-questions 40
+
+certify:    ## guided human certification of draft benchmark questions (runs goldens live)
+	$(PY) -m genie_autopilot.certify
