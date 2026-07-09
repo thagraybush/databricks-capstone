@@ -48,15 +48,34 @@ def _run_sql(w, warehouse_id: str, statement: str) -> None:
 
 
 def _run_sql_file(w, warehouse_id: str, path: Path) -> int:
-    """Split a .sql file on ';' and execute each statement, stripping comment LINES
-    (dropping whole fragments that merely start with a comment would silently skip
-    the statement that follows it)."""
-    statements = []
-    for frag in path.read_text().split(";"):
-        lines = [ln for ln in frag.splitlines() if not ln.strip().startswith("--")]
-        stmt = "\n".join(lines).strip()
-        if stmt:
-            statements.append(stmt)
+    """Execute each statement in a .sql file.
+
+    Comment lines are stripped from the whole text first (comments may contain
+    semicolons), then statements are split on ';' with $$-quote awareness — metric-view
+    YAML bodies legitimately contain semicolons inside $$...$$ blocks."""
+    body = "\n".join(
+        ln for ln in path.read_text().splitlines() if not ln.strip().startswith("--")
+    )
+    statements, buf, in_dollar = [], [], False
+    i = 0
+    while i < len(body):
+        if body.startswith("$$", i):
+            in_dollar = not in_dollar
+            buf.append("$$")
+            i += 2
+            continue
+        ch = body[i]
+        if ch == ";" and not in_dollar:
+            stmt = "".join(buf).strip()
+            if stmt:
+                statements.append(stmt)
+            buf = []
+        else:
+            buf.append(ch)
+        i += 1
+    tail = "".join(buf).strip()
+    if tail:
+        statements.append(tail)
     for stmt in statements:
         _run_sql(w, warehouse_id, stmt)
     return len(statements)

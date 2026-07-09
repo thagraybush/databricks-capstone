@@ -74,7 +74,7 @@ top_products = spark.sql(
       SUM(f.quantity)                       AS units_sold,
       COUNT(DISTINCT f.invoice_id)          AS invoices
     FROM {domain_schema}.fact_sales f
-    LEFT JOIN {domain_schema}.dim_product p ON f.stock_code = p.stock_code
+    LEFT JOIN {domain_schema}.dim_products p ON f.stock_code = p.stock_code
     WHERE NOT f.is_return
     GROUP BY f.stock_code, p.product_name
     ORDER BY net_revenue DESC
