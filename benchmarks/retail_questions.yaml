@@ -1,0 +1,179 @@
+# Golden benchmark questions for the RETAIL Genie space (~24 by end of build-out).
+# Each entry: natural-language question + ground-truth SQL. Loaded into Genie
+# Benchmarks; the eval-run API scores accuracy before and after each healing cycle.
+#
+# Tags:
+#   trap: false — clean, answerable at baseline
+#   trap: true  — business-jargon dialect the naive space misses (EXPECTED to fail
+#                 at baseline; the flywheel earns the synonym)
+#   trap: bad   — deliberately unanswerable / noise PM questions with
+#                 answer_sql: null and a note; these train the query-quality filter.
+
+schema: workspace.retail
+
+questions:
+  # -- (a) clean, answerable ---------------------------------------------------
+
+  - q: "What is total net revenue by country?"
+    trap: false
+    answer_sql: |
+      SELECT country, SUM(line_amount) AS net_revenue
+      FROM workspace.retail.fact_sales GROUP BY country
+
+  - q: "Show daily net revenue for December 2011"
+    trap: false
+    answer_sql: |
+      SELECT sale_date, net_revenue
+      FROM workspace.retail.gold_daily_revenue
+      WHERE sale_date >= '2011-12-01' AND sale_date < '2012-01-01'
+      ORDER BY sale_date
+
+  - q: "How many invoices were there per day?"
+    trap: false
+    answer_sql: |
+      SELECT sale_date, invoices
+      FROM workspace.retail.gold_daily_revenue ORDER BY sale_date
+
+  - q: "Top 10 products by units sold"
+    trap: false
+    answer_sql: |
+      SELECT p.product_name, SUM(f.quantity) AS units
+      FROM workspace.retail.fact_sales f
+      JOIN workspace.retail.dim_products p ON f.stock_code = p.stock_code
+      WHERE NOT f.is_return
+      GROUP BY p.product_name ORDER BY units DESC LIMIT 10
+
+  - q: "How many known customers do we have per country?"
+    trap: false
+    answer_sql: |
+      SELECT country, COUNT(*) AS customers
+      FROM workspace.retail.gold_customer_rfm GROUP BY country
+
+  - q: "What is the total value of returns by country?"
+    trap: false
+    answer_sql: |
+      SELECT country, SUM(-line_amount) AS returns_value
+      FROM workspace.retail.fact_sales WHERE is_return GROUP BY country
+
+  - q: "What is the average session duration in seconds, excluding bots?"
+    trap: false
+    answer_sql: |
+      SELECT AVG(duration_s) AS avg_duration_s
+      FROM workspace.retail.gold_sessions WHERE NOT is_bot
+
+  - q: "How many sessions and purchases were there per day?"
+    trap: false
+    answer_sql: |
+      SELECT event_date, sessions, purchases
+      FROM workspace.retail.gold_funnel_daily ORDER BY event_date
+
+  # -- (b) jargon traps: business dialects the naive space misses ---------------
+
+  - q: "What is our GMV by month?"
+    trap: true   # commerce dialect: GMV = gross_revenue (pre-returns)
+    answer_sql: |
+      SELECT DATE_TRUNC('month', sale_date) AS month, SUM(gross_revenue) AS gmv
+      FROM workspace.retail.gold_daily_revenue GROUP BY DATE_TRUNC('month', sale_date)
+
+  - q: "What's the average basket in the UK?"
+    trap: true   # AOV dialect: net revenue per distinct invoice
+    answer_sql: |
+      SELECT SUM(line_amount) / COUNT(DISTINCT invoice_id) AS aov
+      FROM workspace.retail.fact_sales WHERE country = 'United Kingdom'
+
+  - q: "What's the take rate of returns?"
+    trap: true   # finance dialect: returns_value / gross_revenue
+    answer_sql: |
+      SELECT SUM(returns_value) / SUM(gross_revenue) AS returns_take_rate
+      FROM workspace.retail.gold_daily_revenue
+
+  - q: "How many daily shoppers do we get?"
+    trap: true   # DAU-style dialect: known_customers per day
+    answer_sql: |
+      SELECT sale_date, known_customers
+      FROM workspace.retail.gold_daily_revenue ORDER BY sale_date
+
+  - q: "What's our conversion by day?"
+    trap: true   # growth dialect: session_conversion_rate
+    answer_sql: |
+      SELECT event_date, session_conversion_rate
+      FROM workspace.retail.gold_funnel_daily ORDER BY event_date
+
+  - q: "What share of sessions are bounces?"
+    trap: true   # web-analytics dialect: single-view, no-cart, no-purchase sessions
+    answer_sql: |
+      SELECT AVG(CASE WHEN n_views = 1 AND n_carts = 0 AND n_purchases = 0
+                      THEN 1.0 ELSE 0.0 END) AS bounce_rate
+      FROM workspace.retail.gold_sessions WHERE NOT is_bot
+
+  - q: "Who are our whales?"
+    trap: true   # exec dialect: top customers by RFM monetary value
+    answer_sql: |
+      SELECT customer_id, country, monetary
+      FROM workspace.retail.gold_customer_rfm ORDER BY monetary DESC LIMIT 20
+
+  - q: "Which customers are churn risks?"
+    trap: true   # lifecycle dialect: high recency_days (long since last purchase)
+    answer_sql: |
+      SELECT customer_id, country, recency_days
+      FROM workspace.retail.gold_customer_rfm
+      WHERE recency_days > 90 ORDER BY recency_days DESC
+
+  - q: "What's the sell-through velocity of our top 10 products?"
+    trap: true   # merchandising dialect: units sold per selling day, per product
+    answer_sql: |
+      SELECT p.product_name, SUM(f.quantity) / COUNT(DISTINCT f.sale_date) AS units_per_day
+      FROM workspace.retail.fact_sales f
+      JOIN workspace.retail.dim_products p ON f.stock_code = p.stock_code
+      WHERE NOT f.is_return
+      GROUP BY p.product_name ORDER BY units_per_day DESC LIMIT 10
+
+  - q: "What's our basket attach rate?"
+    trap: true   # merchandising dialect: line items per invoice
+    answer_sql: |
+      SELECT COUNT(*) / COUNT(DISTINCT invoice_id) AS lines_per_invoice
+      FROM workspace.retail.fact_sales WHERE NOT is_return
+
+  # -- (c) deliberately unanswerable noise (query-quality filter training) ------
+
+  - q: "Why is revenue down this month?"
+    trap: bad
+    answer_sql: null
+    note: >
+      Causal "why" question. The warehouse holds outcomes, not causes; no SQL over
+      workspace.retail can attribute a revenue change to a reason.
+
+  - q: "What will Q4 look like versus our OKRs?"
+    trap: bad
+    answer_sql: null
+    note: >
+      Requires a forecast plus OKR targets, neither of which exists in the catalog.
+      Genie answers historical questions only.
+
+  - q: "Pull the Salesforce pipeline for me"
+    trap: bad
+    answer_sql: null
+    note: >
+      Salesforce is an external system not ingested into workspace.retail; there is
+      no pipeline table to query.
+
+  - q: "How are we doing?"
+    trap: bad
+    answer_sql: null
+    note: >
+      No metric, entity, or timeframe specified; any generated SQL would be a guess.
+      Classic vague PM prompt used to train the noise filter.
+
+  - q: "Show me revenue by store location"
+    trap: bad
+    answer_sql: null
+    note: >
+      The dataset is online-only; there is no store or location dimension beyond
+      country, so "store location" cannot be resolved.
+
+  - q: "What's our margin by product?"
+    trap: bad
+    answer_sql: null
+    note: >
+      Margin requires cost of goods, and no cost data exists anywhere in the retail
+      schema; only unit_price / line_amount (revenue side) are available.

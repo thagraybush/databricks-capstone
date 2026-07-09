@@ -1,0 +1,15 @@
+# Retail medallion pipeline — serverless, triggered (on-demand), Free Edition compliant
+# (one active pipeline per type). Run: databricks bundle run retail_medallion -t dev
+
+resources:
+  pipelines:
+    retail_medallion:
+      name: retail_medallion
+      serverless: true
+      catalog: workspace
+      schema: retail
+      continuous: false
+      channel: CURRENT
+      libraries:
+        - file:
+            path: ../pipelines/retail_medallion.py

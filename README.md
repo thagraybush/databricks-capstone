@@ -51,13 +51,29 @@ Runs entirely on [Databricks Free Edition](https://docs.databricks.com/aws/en/ge
 Conversation & Space Management APIs (GA 2026), Genie Benchmarks eval runs, AI
 Functions on serverless SQL, and Databricks Asset Bundles.
 
+## v2: the data-organization simulation
+
+The flywheel's training signal now comes from a simulated data org
+([docs/architecture-v2.md](docs/architecture-v2.md)): a product-engineering **producer**
+emitting clickstream with labeled chaos against the real
+[UCI Online Retail II](https://archive.ics.uci.edu/dataset/502/online+retail+ii) catalog
+(1,067,371 rows, 9 verified DQ issue classes), a **medallion pipeline** (Lakeflow
+Declarative Pipelines: Auto Loader bronze → quarantine-split silver → dimensional gold),
+a **data-science persona** (KPIs, `AI_FORECAST`, MLflow propensity model), and
+**PM/marketing fleets** asking realistically noisy questions at a real Genie space —
+filtered by a predictive query-quality model, clustered by unsupervised drift detection,
+and routed to a **Lakebase**-backed human-in-the-loop queue when confidence is low.
+
 ## Status
 
-- [x] Package skeleton: paced Genie client, drift scorer, healing appliers, eval runner
-- [x] Banking schema, metric views, synthetic data generator, seed benchmark suite
-- [ ] Week 1: workspace bootstrap, Genie space via API, baseline benchmark score
-- [ ] Week 2: telemetry ingest job, ai_query extraction pass, end-to-end healing cycle
-- [ ] Week 3: before/after scorecard, rollback drill, health dashboard, demo recording
+- [x] Banking flywheel v1: schema, metric views, Genie space via API, live conversation smoke test
+- [x] Package: paced Genie client, drift scorer, governed healing, eval runner, producer (16+ tests)
+- [x] Retail medallion: UCI ingest to volume, bronze/silver/gold + quarantine, clickstream layer
+- [x] CI green (ruff + pytest on every push)
+- [ ] Phase C: retail Genie space + benchmark suite loaded via API, baseline score
+- [ ] Phase D: persona fleets → telemetry → drift → Lakebase HITL → healing → post-heal score
+- [ ] Phase E: learning loops trained on labeled outcomes; DQ precision/recall vs ground truth
+- [ ] Phase F: health dashboard, before/after scorecard, demo recording
 
 ---
 
