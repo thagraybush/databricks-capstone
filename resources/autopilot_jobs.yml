@@ -90,3 +90,14 @@ resources:
             base_parameters:
               domain_schema: workspace.retail
               min_corpus_rows: "30"
+
+    router_arm:
+      name: "[autopilot] experimental arm — router+Genie vs Genie alone"
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: router_arm
+          notebook_task:
+            notebook_path: ../notebooks/61_router_arm.py
+            base_parameters:
+              domain_schema: workspace.retail
+              space_id: 01f17b5a51411bc382cd3cd224d11daf
