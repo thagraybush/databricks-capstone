@@ -40,3 +40,6 @@ demo: bootstrap eval simulate detect heal eval  ## full before/after flywheel de
 
 clean:
 	rm -rf $(VENV) .pytest_cache .ruff_cache data_gen/output
+
+sessions:   ## run a paced multi-turn persona session batch against the live space
+	$(PY) -m genie_autopilot.session_engine --sessions 6 --max-questions 40

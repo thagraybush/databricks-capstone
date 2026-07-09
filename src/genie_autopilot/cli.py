@@ -51,21 +51,29 @@ def _run_sql_file(w, warehouse_id: str, path: Path) -> int:
     """Execute each statement in a .sql file.
 
     Comment lines are stripped from the whole text first (comments may contain
-    semicolons), then statements are split on ';' with $$-quote awareness — metric-view
-    YAML bodies legitimately contain semicolons inside $$...$$ blocks."""
+    semicolons), then statements are split on ';' with awareness of BOTH $$-quoted
+    blocks (metric-view YAML) and single-quoted string literals ('' escapes honored) —
+    COMMENT ON strings legitimately contain semicolons too."""
     body = "\n".join(
         ln for ln in path.read_text().splitlines() if not ln.strip().startswith("--")
     )
-    statements, buf, in_dollar = [], [], False
+    statements, buf = [], []
+    in_dollar = in_string = False
     i = 0
     while i < len(body):
-        if body.startswith("$$", i):
+        if not in_string and body.startswith("$$", i):
             in_dollar = not in_dollar
             buf.append("$$")
             i += 2
             continue
         ch = body[i]
-        if ch == ";" and not in_dollar:
+        if not in_dollar and ch == "'":
+            if in_string and body[i + 1 : i + 2] == "'":  # escaped '' inside a string
+                buf.append("''")
+                i += 2
+                continue
+            in_string = not in_string
+        if ch == ";" and not in_dollar and not in_string:
             stmt = "".join(buf).strip()
             if stmt:
                 statements.append(stmt)

@@ -34,8 +34,66 @@ user friction (thumbs-down + corrections)
    → benchmark regression gate (eval-run API) with automatic rollback
 ```
 
-Full design: [docs/architecture.md](docs/architecture.md) ·
+## End-to-end architecture
+
+```mermaid
+flowchart TB
+    subgraph PRODUCE["Data producers (simulated product engineering)"]
+        UCI["UCI Online Retail II<br/>1,067,371 rows · 9 verified DQ classes"]
+        PROD["Chaos producer<br/>clickstream + labeled defects"]
+    end
+    subgraph MEDALLION["Lakeflow Declarative Pipeline (medallion)"]
+        BRONZE["bronze<br/>as-landed, Auto Loader"]
+        SILVER["silver<br/>typed · deduped · PII-scrubbed"]
+        QUAR["quarantine<br/>machine-readable reasons"]
+        GOLD["gold marts<br/>facts · dims · funnel · RFM"]
+    end
+    subgraph SEMANTIC["Semantic layer"]
+        MV["Metric Views (YAML 1.1)<br/>+ learned synonyms"]
+        KPI["Certified KPI views<br/>run-the-business metrics"]
+        GENIE["Genie spaces<br/>NL → SQL, benchmarked"]
+    end
+    subgraph HUMANS["Business personas (RTB work + simulated sessions)"]
+        EXEC["CFO / PM / marketing<br/>jargon · vagueness · poison terms"]
+        ENG["engineers / DS<br/>KPIs · models · forecasts"]
+    end
+    subgraph FLYWHEEL["Autonomous semantic flywheel"]
+        TEL["telemetry<br/>conversations · feedback · query history"]
+        ROUTER["query-quality router<br/>run / clarify / reject"]
+        DRIFT["drift detection<br/>authority × frequency × freshness"]
+        HITL["HITL queue (Lakebase Postgres)<br/>certified definitions · poison refusal"]
+        HEAL["healing appliers<br/>UC comments · MV synonyms · space context"]
+        GATE["benchmark regression gate<br/>stratified · variance-tested · rollback"]
+    end
+    subgraph GOV["Governance & evidence"]
+        LEDGER["audit ledger<br/>Delta-mirrored, approver lanes"]
+        DASH["AI/BI dashboard<br/>accuracy arc · DQ · healing activity"]
+        EVID["eval history<br/>5-run experimental arc"]
+    end
+    UCI --> BRONZE
+    PROD --> BRONZE
+    BRONZE --> SILVER --> GOLD
+    SILVER --> QUAR
+    GOLD --> MV --> GENIE
+    GOLD --> KPI --> GENIE
+    EXEC -->|questions| ROUTER --> GENIE
+    ENG --> GENIE
+    GENIE -->|feedback + corrections| TEL --> DRIFT --> HITL --> HEAL
+    HEAL --> MV
+    HEAL --> GENIE
+    HEAL --> GATE --> EVID
+    HEAL --> LEDGER --> DASH
+    EVID --> DASH
+    QUAR -.->|precision/recall vs labeled chaos| DASH
+```
+
+Full design: [docs/architecture-v2.md](docs/architecture-v2.md) ·
+Failure taxonomy: [docs/semantic-failure-taxonomy.md](docs/semantic-failure-taxonomy.md) ·
+RTB scenarios: [docs/rtb-scenarios.md](docs/rtb-scenarios.md) ·
+Tour: [docs/workspace-tour.md](docs/workspace-tour.md) ·
 Pitch: [docs/interview-pitch.md](docs/interview-pitch.md) ·
+Admin playbook: [docs/admin-governance.md](docs/admin-governance.md) ·
+FE-limits backlog: [docs/backlog-free-edition-limits.md](docs/backlog-free-edition-limits.md) ·
 Study track: [docs/study-plan.md](docs/study-plan.md)
 
 ## Scenario
