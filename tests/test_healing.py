@@ -77,3 +77,32 @@ def test_join_on_key_survives_roundtrip():
     assert "true:" not in out
     assert "on: source.stock_code = product.stock_code" in out or "'on':" in out
     assert "gmv" in out
+
+
+def test_audit_ledger_mirrors_to_delta(tmp_path):
+    from genie_autopilot.healing import AuditLedger, HealingRecord
+
+    executed = []
+    ledger = AuditLedger(tmp_path / "ledger.jsonl", delta_table="ws.retail.ledger",
+                         sql_runner=executed.append)
+    rec = HealingRecord(ts=1.0, action="uc_comment", target="t.c", proposal_key="k",
+                        payload="term with 'quotes'", status="applied", approver="auto")
+    ledger.append(rec)
+    assert (tmp_path / "ledger.jsonl").read_text().count("\n") == 1
+    assert executed[0].startswith("CREATE TABLE IF NOT EXISTS ws.retail.ledger")
+    assert "INSERT INTO ws.retail.ledger" in executed[1]
+    assert "term with ''quotes''" in executed[1]
+    ledger.append(rec)  # DDL runs once
+    assert sum(1 for s in executed if s.startswith("CREATE TABLE")) == 1
+
+
+def test_audit_ledger_mirror_failure_keeps_local(tmp_path):
+    from genie_autopilot.healing import AuditLedger, HealingRecord
+
+    def boom(_):
+        raise RuntimeError("warehouse down")
+
+    ledger = AuditLedger(tmp_path / "ledger.jsonl", delta_table="ws.retail.ledger", sql_runner=boom)
+    ledger.append(HealingRecord(ts=1.0, action="a", target="t", proposal_key="k",
+                                payload="p", status="s", approver="x"))
+    assert (tmp_path / "ledger.jsonl").read_text().count("\n") == 1  # no exception, record kept

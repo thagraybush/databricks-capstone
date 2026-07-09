@@ -193,7 +193,11 @@ def main() -> None:
         lane = "AUTO " if p in auto else "HUMAN"
         print(f"  {lane} {p.confidence:0.2f} ({p.distinct_users}u) '{p.term}' → {p.entity}")
 
-    ledger = AuditLedger(REPO_ROOT / "audit_ledger.jsonl")
+    ledger = AuditLedger(
+        REPO_ROOT / "audit_ledger.jsonl",
+        delta_table=f"{SCHEMA}.autopilot_audit_ledger",
+        sql_runner=lambda s: run_sql(w, s),
+    )
     approved = [(p, "auto") for p in auto] + [(p, "human_simulated") for p in review]
 
     # ---- 4. heal ----------------------------------------------------------

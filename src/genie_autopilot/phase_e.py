@@ -93,7 +93,11 @@ def mine_intents(records: list[dict]) -> list[Correction]:
 
 
 def heal(api: GenieAPI, w, safe: list, conflicts: dict[str, set[str]]) -> None:
-    ledger = AuditLedger(REPO_ROOT / "audit_ledger.jsonl")
+    ledger = AuditLedger(
+        REPO_ROOT / "audit_ledger.jsonl",
+        delta_table="workspace.retail.autopilot_audit_ledger",
+        sql_runner=lambda s: run_sql(w, s),
+    )
     # metric-view synonyms for gross_revenue aliases
     syn = {}
     glossary_lines = []

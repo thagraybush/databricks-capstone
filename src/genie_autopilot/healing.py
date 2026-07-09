@@ -39,14 +39,50 @@ class HealingRecord:
 
 
 class AuditLedger:
-    """Append-only JSONL ledger (mirrored to a Delta table in Week 2)."""
+    """Append-only JSONL ledger, optionally mirrored to a Delta table so operator
+    dashboards stay current without manual loads.
 
-    def __init__(self, path: str | Path = "audit_ledger.jsonl"):
+    The local write always happens first and is the source of truth; the Delta
+    mirror is best-effort — a mirror failure prints a warning and never raises,
+    so a workspace hiccup can't lose audit evidence."""
+
+    DDL = (
+        "CREATE TABLE IF NOT EXISTS {table} (ts TIMESTAMP, action STRING, target STRING, "
+        "proposal_key STRING, payload STRING, status STRING, approver STRING)"
+    )
+    _COLUMNS = ("action", "target", "proposal_key", "payload", "status", "approver")
+
+    def __init__(
+        self,
+        path: str | Path = "audit_ledger.jsonl",
+        delta_table: str | None = None,
+        sql_runner=None,
+    ):
         self.path = Path(path)
+        self.delta_table = delta_table
+        self.sql_runner = sql_runner
+        self._table_ready = False
+
+    @staticmethod
+    def _esc(value) -> str:
+        return str(value).replace("'", "''")[:1000]
 
     def append(self, record: HealingRecord) -> None:
         with self.path.open("a") as f:
             f.write(json.dumps(asdict(record)) + "\n")
+        if not (self.delta_table and self.sql_runner):
+            return
+        try:
+            if not self._table_ready:
+                self.sql_runner(self.DDL.format(table=self.delta_table))
+                self._table_ready = True
+            r = asdict(record)
+            values = ", ".join(f"'{self._esc(r[c])}'" for c in self._COLUMNS)
+            self.sql_runner(
+                f"INSERT INTO {self.delta_table} VALUES (to_timestamp({float(r['ts'])}), {values})"
+            )
+        except Exception as exc:  # never lose the local record over a mirror failure
+            print(f"[audit] Delta mirror failed ({exc}); record retained in {self.path}")
 
 
 def triage(proposals: list[Proposal]) -> tuple[list[Proposal], list[Proposal]]:
