@@ -73,3 +73,13 @@ Bot detection (session level): precision 8/8 = 100%, recall 8/8 = 100%
 Duplicates: 68 labeled dup emissions, 68 rows removed by dedup
 Malformed: 14 labeled truncations, 14 rows quarantined (quarantine also catches unknown types/bad timestamps)
 ```
+
+## Variance study — 3 repeated eval runs on the healed space
+
+```
+clean    : mean 100%  range [100%, 100%]  runs: 8/8, 8/8, 8/8
+collision: mean 100%  range [100%, 100%]  runs: 4/4, 4/4, 4/4
+jargon   : mean 80%  range [70%, 90%]  runs: 8/10, 7/10, 9/10
+```
+
+Genie is nondeterministic; stability is reported as mean ± range across repeats rather than a single-run point estimate.

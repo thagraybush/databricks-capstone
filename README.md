@@ -13,7 +13,11 @@ context — converting raw human behavior into automated metadata & governance a
 | naive baseline | 40% | 75% | 56% |
 | synonym-only healing | 40% **(+0 — the key finding)** | 75% | 56% |
 | HITL-certified definitions | 80% | **100%** | 89% |
-| + collision aliases & poison-term handling | **90%** | 100% | **95%** |
+| + collision aliases & poison-term handling | **80% mean, 70–90% range** (repeated runs) | 100% (stable) | up to **95%** |
+
+Genie is nondeterministic, so the healed state was re-evaluated 3× : clean and
+collision strata are perfectly stable at 100%; jargon averages 80% (doubled from
+baseline) with run-to-run breathing room honestly reported as a range.
 
 Why synonyms alone do nothing: [docs/semantic-failure-taxonomy.md](docs/semantic-failure-taxonomy.md).
 Poison terms ('sales' = revenue to finance, units to merchandising) are detected as
