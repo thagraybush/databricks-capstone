@@ -1,5 +1,12 @@
 # Flywheel jobs — serverless only (Free Edition), ≤5 concurrent tasks account-wide.
-# Notebooks land in Week 2; tasks are wired to notebooks/ paths deployed by the bundle.
+# The flywheel runs 4 tasks strictly sequentially and ds_persona runs 1, so a full
+# concurrent burst of both jobs is 2 tasks — well under the limit.
+#
+# Parameter wiring: every notebook declares widgets with sensible defaults, so
+# base_parameters below only pin the knobs an operator tunes per environment.
+# space_id is intentionally blank in dev — notebooks 10/30/40 no-op gracefully
+# until a Genie space id is supplied (fill it in here, or override at run time:
+#   databricks bundle run autopilot_flywheel -t dev --notebook-params space_id=<id>).
 
 resources:
   jobs:
@@ -10,16 +17,41 @@ resources:
         - task_key: ingest_telemetry
           notebook_task:
             notebook_path: ../notebooks/10_ingest_telemetry.py
+            base_parameters:
+              domain_schema: workspace.retail
+              space_id: ""            # fill in (or pass at run time) to activate harvesting
         - task_key: detect_drift
           depends_on: [{ task_key: ingest_telemetry }]
           notebook_task:
             notebook_path: ../notebooks/20_detect_drift.py
+            base_parameters:
+              domain_schema: workspace.retail
+              min_distinct_users: "2"
         - task_key: apply_healings
           depends_on: [{ task_key: detect_drift }]
           notebook_task:
             notebook_path: ../notebooks/30_apply_healings.py
+            base_parameters:
+              domain_schema: workspace.retail
+              space_id: ""            # needed for Genie space synonym patches
+              auto_approve_confidence: "0.75"
+              dry_run: "true"         # flip to "false" once the HITL queue looks sane
         - task_key: run_benchmarks
           depends_on: [{ task_key: apply_healings }]
           notebook_task:
             notebook_path: ../notebooks/40_run_benchmarks.py
+            base_parameters:
+              domain_schema: workspace.retail
+              space_id: ""            # needed to launch benchmark eval runs
+              phase: post_healing     # this task always measures the healed state
       # Manual trigger during development; schedule (e.g. hourly) added in Week 3.
+
+    ds_persona:
+      name: "[autopilot] DS persona — KPIs, forecast, propensity model"
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: ds_kpis_and_models
+          notebook_task:
+            notebook_path: ../notebooks/50_ds_kpis_and_models.py
+            base_parameters:
+              domain_schema: workspace.retail
