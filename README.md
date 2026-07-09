@@ -223,6 +223,7 @@ More entry points: [tour](docs/workspace-tour.md) · [pitch](docs/interview-pitc
 
 What Free Edition blocks and what we shipped instead:
 [docs/backlog-free-edition-limits.md](docs/backlog-free-edition-limits.md).
+Operations: [SECURITY.md](SECURITY.md) (credential posture) · [docs/runbook.md](docs/runbook.md) (incident playbooks + idempotency) · [infra/COVERAGE.md](infra/COVERAGE.md) (IaC audit: 59/67 objects re-creatable from this repo).
 
 ---
 
