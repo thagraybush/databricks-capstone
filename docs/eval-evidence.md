@@ -103,3 +103,21 @@ jargon (bleeding-edge dialect): 9/10 → 8/10 (90% → 80%, lift -10%)
 clean (control, no-regression):  8/8 → 8/8 (100% → 100%)
 verdict: ROLLBACK
 ```
+
+## Router-vs-Genie experimental arm (issue #5) — cold-start run
+
+Routing distribution over the 29-question superset (22 answerable + 7 noise incl. poison probe),
+router trained on the 82-row corpus:
+
+```
+noise       reject   5     ← Genie-alone answers all 7 with confident garbage
+noise       clarify  2     ← 7/7 deflected, zero noise reached Genie
+answerable  run      6     ← auto-passed with few-shot context from semantic memory
+answerable  clarify 16     ← held for human review (cold-start caution)
+```
+
+Honest read: at 82 training rows the router is a perfect noise filter (0 leaks, 0 wrongful
+hard-rejects of answerable questions) and deliberately over-cautious on pass-through —
+73% of answerable questions route to human review. This is the correct governed cold-start
+posture; the nightly session corpus + weekly retrains are the relaxation mechanism, and
+the pass-through rate is the metric to watch as the corpus grows.
