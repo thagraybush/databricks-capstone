@@ -202,6 +202,7 @@ Asset Bundles.
 | [data_gen/](data_gen/README.md) | UCI dataset, banking datagen, labeled chaos output, session manifests |
 | [tests/](tests/README.md) | Pure-python, zero-network unit suite (fakes over mocks) |
 | [docs/](docs/README.md) | Full documentation index and reading path |
+| [infra/](infra/README.md) | Infrastructure-as-code: workspace setup, RBAC roles, bootstrap |
 | [resources/](resources/autopilot_jobs.yml) | Asset Bundle job + pipeline definitions |
 
 More entry points: [tour](docs/workspace-tour.md) · [pitch](docs/interview-pitch.md) ·
