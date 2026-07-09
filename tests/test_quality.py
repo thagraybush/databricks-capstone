@@ -190,7 +190,7 @@ def test_hitl_ddl_contains_both_tables():
     assert "hitl_queue" in lakebase.HITL_DDL
     assert "healing_history" in lakebase.HITL_DDL
     assert "evidence jsonb" in lakebase.HITL_DDL
-    assert "CHECK (status IN ('pending', 'approved', 'rejected'))" in lakebase.HITL_DDL
+    assert "CHECK (status IN ('pending', 'approved', 'rejected', 'applied'))" in lakebase.HITL_DDL
     assert "approver text" in lakebase.HITL_DDL
 
 

@@ -106,9 +106,15 @@ def get_credential(w: Any, project_id: str, branch: str = DEFAULT_BRANCH) -> tup
         endpoints = listing.get("endpoints") or []
         if endpoints:
             ep = endpoints[0]
-            host = host or ep.get("host")
-            endpoint_id = endpoint_id or ep.get("id") or ep.get("endpoint_id")
+            # The read/write host is nested under status.hosts.host on current API
+            # versions; fall back to a flat host or a recursive search for older ones.
+            status = ep.get("status") if isinstance(ep.get("status"), dict) else {}
+            hosts = status.get("hosts") if isinstance(status.get("hosts"), dict) else {}
+            host = host or hosts.get("host") or ep.get("host") or _find_first(ep, "host")
+            # The endpoint's logical name ("…/endpoints/primary") is what the credential
+            # API expects; its trailing segment is the endpoint id.
             name = ep.get("name", "")
+            endpoint_id = endpoint_id or ep.get("id") or ep.get("endpoint_id")
             if not endpoint_id and "/endpoints/" in name:
                 endpoint_id = name.rsplit("/", 1)[-1]
     if not host or not endpoint_id:
@@ -163,7 +169,7 @@ CREATE TABLE IF NOT EXISTS hitl_queue (
     confidence double precision,
     distinct_users int,
     kind text,
-    status text DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    status text DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'applied')),
     created_at timestamptz DEFAULT now(),
     decided_at timestamptz,
     decided_by text,
