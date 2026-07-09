@@ -78,3 +78,32 @@ def test_sql_splitter_handles_semicolons_in_strings(tmp_path):
     assert n == 3
     assert "first; second; it''s fine" in executed[1]
     assert "comment: a; b" in executed[2]
+
+
+def test_rollback_drill_injection_shape():
+    """Injection appends exactly one glossary line; restore returns the original."""
+    import json
+
+    from genie_autopilot import phase_g_rollback as gr
+
+    class FakeSpaceAPI:
+        def __init__(self):
+            self.ser = json.dumps(
+                {"instructions": {"text_instructions": [{"id": "a", "content": ["base"]}]}}
+            )
+            self.updates = []
+
+        def get_space(self):
+            return {"serialized_space": self.ser, "etag": "e1"}
+
+        def update_space(self, serialized, etag=None):
+            self.updates.append((serialized, etag))
+            self.ser = serialized
+
+    api = FakeSpaceAPI()
+    snapshot, _ = gr.inject_bad_definition(api)
+    injected = json.loads(api.ser)["instructions"]["text_instructions"][0]["content"]
+    assert injected == ["base", gr.POISON_DEFINITION]
+    assert json.loads(snapshot)["instructions"]["text_instructions"][0]["content"] == ["base"]
+    gr.restore(api, snapshot)
+    assert json.loads(api.ser)["instructions"]["text_instructions"][0]["content"] == ["base"]
