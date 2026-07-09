@@ -59,7 +59,11 @@ def triage(proposals: list[Proposal]) -> tuple[list[Proposal], list[Proposal]]:
 # -- Applier 1: Unity Catalog metadata ---------------------------------------
 
 def uc_comment_sql(fq_table: str, column: str, term: str) -> str:
-    comment = f"Learned synonym: '{term}'. Auto-hydrated by Genie Autopilot from interaction telemetry."
+    safe_term = term.replace("'", "''")
+    comment = (
+        f"Learned synonym: ''{safe_term}''. "
+        "Auto-hydrated by Genie Autopilot from interaction telemetry."
+    )
     return f"COMMENT ON COLUMN {fq_table}.{column} IS '{comment}'"
 
 
@@ -77,6 +81,15 @@ def add_synonyms_to_yaml(yaml_text: str, synonyms_map: dict[str, list[str]]) -> 
     Caps at MAX_SYNONYMS per entry, de-duplicates case-insensitively, preserves order.
     """
     spec = yaml.safe_load(yaml_text)
+    # YAML-1.1 trap: pyyaml parses the join key `on:` as boolean True and would
+    # re-serialize it as `true:`, which the metric-view parser rejects. Restore it.
+    def _fix_joins(node: dict) -> None:
+        for join in node.get("joins") or []:
+            if True in join:
+                join["on"] = join.pop(True)
+            _fix_joins(join)
+
+    _fix_joins(spec)
     for section in ("fields", "dimensions", "measures"):
         for entry in spec.get(section) or []:
             new = synonyms_map.get(entry.get("name", ""))
@@ -119,11 +132,24 @@ def patch_space_column_synonyms(
 
 
 def append_space_instruction(serialized_space: str, instruction: str) -> str:
+    """Append one instruction. serialized_space v2 stores text_instructions as a LIST of
+    {id, content: [lines]} entries (verified live); the legacy plain-string form is
+    tolerated for forward-compatibility."""
+    import uuid
+
     space = json.loads(serialized_space)
     instructions = space.setdefault("instructions", {})
-    text = instructions.get("text_instructions", "") or ""
-    stamped = f"{text}\n- {instruction}".strip()
-    instructions["text_instructions"] = stamped
+    entries = instructions.get("text_instructions")
+    if isinstance(entries, list):
+        # The space API allows AT MOST ONE text_instructions entry — append the
+        # instruction as a new content line inside it (create it if absent).
+        if entries:
+            entries[0].setdefault("content", []).append(instruction)
+        else:
+            entries.append({"id": uuid.uuid4().hex, "content": [instruction]})
+    else:
+        text = entries or ""
+        instructions["text_instructions"] = f"{text}\n- {instruction}".strip()
     return json.dumps(space)
 
 

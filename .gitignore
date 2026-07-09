@@ -218,3 +218,6 @@ __marimo__/
 .streamlit/secrets.toml
 data_gen/output/
 data_gen/raw/
+fleet_manifest.json
+proposals.json
+audit_ledger.jsonl

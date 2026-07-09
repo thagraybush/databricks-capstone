@@ -57,3 +57,23 @@ def test_triage_gate():
     auto, review = triage([strong, weak, low])
     assert auto == [strong]
     assert weak in review and low in review
+
+
+YAML_WITH_JOIN = """\
+version: 1.1
+source: workspace.retail.fact_sales
+joins:
+  - name: product
+    source: workspace.retail.dim_products
+    on: source.stock_code = product.stock_code
+measures:
+  - name: net_revenue
+    expr: SUM(source.line_amount)
+"""
+
+
+def test_join_on_key_survives_roundtrip():
+    out = add_synonyms_to_yaml(YAML_WITH_JOIN, {"net_revenue": ["gmv"]})
+    assert "true:" not in out
+    assert "on: source.stock_code = product.stock_code" in out or "'on':" in out
+    assert "gmv" in out

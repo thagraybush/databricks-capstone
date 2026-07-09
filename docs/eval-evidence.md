@@ -26,3 +26,29 @@ Failure reasons: {"RESULT_EXTRA_ROWS": 2, "LLM_JUDGE_INCORRECT_TABLE_OR_FIELD_US
 | jargon | PASS | What is our GMV by month? |
 | jargon | PASS | What's our conversion by day? |
 | jargon | PASS | What's the average basket in the UK? |
+
+## Post-healing — eval run `01f17ba60e001d47855597a64abad214`
+
+Aggregate: 10/18 = 56%
+
+```
+jargon (bleeding-edge dialect): 4/10 → 4/10 (40% → 40%, lift +0%)
+clean (control, no-regression):  6/8 → 6/8 (75% → 75%)
+verdict: KEEP
+```
+
+Healings: 6 approved (0 auto, 6 human-reviewed), 1 metric views updated, 6 space instructions added.
+
+## Post-glossary healing (HITL-enriched definitions) — eval run `01f17ba6fd231534b2200d3f90b556e6`
+
+Aggregate: 16/18 = 89%
+
+```
+jargon (bleeding-edge dialect): 4/10 → 8/10 (40% → 80%, lift +40%)
+clean (control, no-regression):  6/8 → 8/8 (75% → 100%)
+verdict: KEEP
+```
+
+Key finding: pure synonym healing produced +0% — every benchmark failure was a metric-DEFINITION
+or output-shape gap, not vocabulary. The healing unit for bleeding-edge dialect is the certified
+definition (formula + threshold + units + shape), enriched by the human reviewer in the HITL queue.
