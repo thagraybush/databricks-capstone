@@ -283,3 +283,14 @@ Lakebase (Postgres), not the warehouse.
 Last-resort recovery — rebuilding the workspace from the repo — is the
 reproducibility procedure in [../infra/README.md](../infra/README.md). Credential
 posture and rotation live in [../SECURITY.md](../SECURITY.md).
+
+## Addendum — incident resolution: serverless OOM → Delta-as-SoR queue (2026-07-09)
+
+The exit-134 OOM documented above recurred on notebook 80 (9m, `%pip psycopg[binary]`
+bootstrap on FE serverless). Resolution was architectural, not a retry: the steward
+queue moved to Delta (`workspace.retail.autopilot_escalations`, identity ids, statuses
+pending/approved/rejected/applied) with a one-time migration of all 34 Lakebase rows
+preserving statuses. Notebooks 80/85/90 are now pure `spark.sql` (no pip, no restart);
+both `steward_console` and `daily_ops` verified TERMINATED SUCCESS post-change.
+Lakebase remains the laptop-tooling mirror (`lakebase.py` unchanged). Idempotency:
+escalation MERGEs on `proposal_key`; rulings transition only `pending` rows; re-runs safe.

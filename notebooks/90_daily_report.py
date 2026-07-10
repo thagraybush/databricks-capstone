@@ -10,19 +10,6 @@
 # MAGIC environments, so each KPI degrades to NULL with an honest `detail` note rather
 # MAGIC than failing the run.
 
-# COMMAND ----------
-
-# MAGIC %md ## Environment bootstrap
-# MAGIC `psycopg` is a binary dependency: the bundle syncs source code, not packages, so
-# MAGIC serverless notebooks must install it explicitly before the Lakebase connection.
-
-# COMMAND ----------
-
-# MAGIC %pip install psycopg[binary] --quiet
-
-# COMMAND ----------
-
-dbutils.library.restartPython()  # noqa: F821 — make the fresh package importable
 
 # COMMAND ----------
 

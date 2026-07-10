@@ -16,7 +16,7 @@ context; the loop makes tomorrow's answers better than today's.
 | **Unsupervised** | Drift clustering (`drift.score_proposals`) | term→entity mappings from correction telemetry, ranked authority × frequency × freshness | Genie Conversation API telemetry, Delta |
 | **Unsupervised** | Novelty detection (`steward.detect_novel_terms`) | vocabulary in user questions with **no governed coverage** — new metrics and taxonomy candidates | telemetry corpus + vocabulary baseline |
 | **Semantic memory** | Vector Search `semantic-memory` index | retrieval-augmented few-shot context per incoming question | Vector Search (delta-sync, CDF) |
-| **Human-in-the-loop** | Steward queue (Lakebase) + console (notebook 80) | certified definitions, poison rulings, disclosure rules — the decisions machines must not make alone | Lakebase Postgres, Databricks Apps (paid-tier vision) |
+| **Human-in-the-loop** | Steward queue (Delta `autopilot_escalations`; Lakebase mirror for laptop tooling) + Review Engine (notebook 80) | certified definitions, poison rulings, disclosure rules — the decisions machines must not make alone | Lakebase Postgres, Databricks Apps (paid-tier vision) |
 | **Evaluation** | Stratified benchmark gate + variance protocol | whether any change actually helped, per failure mode | Genie Benchmarks eval-run API |
 
 ## The escalation policy (what reaches a human, and what never does)
@@ -24,7 +24,7 @@ context; the loop makes tomorrow's answers better than today's.
 Auto-handled (no human): mode-1 alias collisions with ≥2 distinct reporters and
 confidence ≥ 0.75 — synonym healing, benchmark-gated, rollback-protected.
 
-**Escalated to the steward queue** (`hitl_queue` on Lakebase):
+**Escalated to the steward queue** (`workspace.retail.autopilot_escalations`, Delta — the in-workspace system of record; a Lakebase Postgres mirror serves laptop tooling):
 1. **Below-gate proposals** — single-reporter or low-confidence mappings.
 2. **Poison conflicts** — one term, contradictory targets across roles ('sales',
    'turnover', 'baskets'). Certified healing is a clarification menu, never a mapping.
@@ -70,3 +70,13 @@ notebook); definition-lifecycle state on Metric View measures (proposed → cert
 deprecated); population-disclosure metadata (mode 9) surfaced in Genie answers;
 escalation events as a native telemetry stream. Genie Ontology (preview) points the
 same direction — this repo is the public-API existence proof with evidence.
+
+## Architecture decision: Delta as the queue's system of record (2026-07-09)
+
+The queue originally lived only in Lakebase Postgres. Two real OOM incidents on Free
+Edition serverless (exit 134 during `%pip install psycopg[binary]` bootstraps in
+notebooks 80/85) forced the honest tradeoff: **in-workspace, the queue is Delta** —
+pure `spark.sql`, zero binary dependencies, identity ids, time-travel audit — and
+**Lakebase remains the operational mirror** for laptop tooling (psycopg works fine
+off-serverless) and the paid-workspace posture, where configurable compute makes
+Lakebase-as-SoR viable again. Recovery drill and details: docs/runbook.md.

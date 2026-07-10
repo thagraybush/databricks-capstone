@@ -17,7 +17,7 @@ DS persona, 60s are the router, 70–90 are the living-system operations layer.
 | `60_semantic_router.py` | Train the two-head semantic router (answerability + target metric), register to UC | `router_training` |
 | `61_router_arm.py` | Third experimental arm: router+Genie vs Genie-alone on the noise-inclusive superset → `router_arm_results` | `router_arm` |
 | `70_run_sessions.py` | Nightly paced multi-turn persona sessions (real traffic) + manifest persist | `nightly_sessions` task 1 (02:00 MT) |
-| `80_steward_console.py` | HITL review surface over the Lakebase `hitl_queue`: list / approve / reject — decide ≠ deploy | `steward_console` (manual, param overrides) |
+| `80_steward_console.py` | Steward Review Engine over the Delta queue `autopilot_escalations`: docket, charts, in-notebook rulings — decide ≠ deploy | `steward_console` (manual, param overrides) |
 | `85_escalate_and_apply.py` | The steward loop's system half: mine below-gate proposals, poison conflicts, novel terms → enqueue (idempotent); apply steward-approved rows through the governed appliers | `daily_ops` task 1 (03:30 MT) |
 | `90_daily_report.py` | The system's daily standup: healings, escalations, accuracy trend, router economics, DQ posture → `autopilot_daily_report` | `daily_ops` task 2 (after 85) |
 

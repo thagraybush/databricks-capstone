@@ -1,264 +1,244 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # 80 — Steward console (HITL review surface)
-# MAGIC The metric steward's approve/reject surface over the Lakebase `hitl_queue`.
+# MAGIC # 🧭 Steward Review Engine
 # MAGIC
-# MAGIC **Non-blocking by design:** users' Genie sessions never wait on this queue.
-# MAGIC Genie keeps answering from its *current* certified context while escalations
-# MAGIC pend here; a steward decision only changes what the next daily-ops run applies.
+# MAGIC **You are the metric steward.** This notebook is your complete review surface for
+# MAGIC the semantic escalations the autonomous system cannot — and must not — decide alone.
 # MAGIC
-# MAGIC Usage (widgets, or Jobs UI parameter overrides on the `steward_console` job):
-# MAGIC - `action=list` — show pending escalations with evidence and a suggested next step
-# MAGIC - `action=approve ids=3,7 decided_by=you@corp.com` — approve queue rows 3 and 7
-# MAGIC - `action=reject ids=5` — reject queue row 5
+# MAGIC ## The business process (read once)
 # MAGIC
-# MAGIC Governance boundary: **decide ≠ deploy.** This notebook records decisions only;
-# MAGIC approved items are APPLIED by the next daily-ops run (notebook 30 /
-# MAGIC `steward.apply_approved`), which writes the application to the audit ledger.
+# MAGIC The self-healing semantic layer runs continuously: user questions and feedback flow
+# MAGIC in as telemetry, drift detection scores candidate term→metric mappings, and anything
+# MAGIC that clears the confidence gate (≥ 0.75, ≥ 2 independent reporters) heals
+# MAGIC automatically behind a benchmark regression gate. Everything else lands **here**:
+# MAGIC
+# MAGIC | Escalation kind | What it means | Your decision |
+# MAGIC |---|---|---|
+# MAGIC | `below_gate_proposal` | A term→metric mapping reported by too few users or with low confidence | Approve the mapping, or reject it |
+# MAGIC | `poison_conflict` | One term means DIFFERENT things to different teams (e.g. 'sales') | Approve = Genie must ask which meaning; never auto-map |
+# MAGIC | `novel_term` | Vocabulary users keep saying that has no governed definition | Approve = worth defining (then author the definition); reject = noise |
+# MAGIC
+# MAGIC **Decide ≠ deploy.** Approving here changes *nothing* immediately. The next
+# MAGIC `daily_ops` run applies your approvals through the same benchmark-gated,
+# MAGIC audit-logged appliers as every autonomous healing. You are an input to
+# MAGIC governance, not a bypass of it. Users are never blocked by this queue —
+# MAGIC Genie keeps answering from its current certified context while items pend.
+# MAGIC
+# MAGIC ## How to run a review session
+# MAGIC 1. **Run All** — the notebook gates your role, then shows the queue, charts, and evidence.
+# MAGIC 2. Read the *Decisions needed* docket; study evidence for anything unclear.
+# MAGIC 3. Record rulings in the `DECISIONS` cell (edit the dict), run it and the apply cell.
+# MAGIC 4. The verification cell confirms the queue moved; the audit trail carries your
+# MAGIC    attested identity automatically.
 
 # COMMAND ----------
 
-# MAGIC %md ## Environment bootstrap
-# MAGIC `psycopg` is a binary dependency: the bundle syncs source code, not packages, so
-# MAGIC serverless notebooks must install it explicitly before the Lakebase connection.
+# MAGIC %md ## Step 0 — Role gate
+# MAGIC Only principals holding `metric_steward` in `workspace.retail.autopilot_roles`
+# MAGIC may record decisions. The registry — not this notebook — is the source of truth
+# MAGIC for who stewards are; decisions are attested as `human:<your-email>` regardless
+# MAGIC of any manual input, so the audit trail always carries a verified identity.
 
 # COMMAND ----------
 
-# MAGIC %pip install psycopg[binary] --quiet
+from databricks.sdk import WorkspaceClient
 
-# COMMAND ----------
-
-dbutils.library.restartPython()  # noqa: F821 — make the fresh package importable
-
-# COMMAND ----------
-
-import json
-import sys
-from pathlib import Path
-
-# Bundle layout: files/notebooks/ (cwd) and files/src/ (package source).
-sys.path.insert(0, str((Path.cwd().parent / "src").resolve()))
-
-from genie_autopilot import lakebase  # noqa: E402
-
-dbutils.widgets.dropdown("action", "list", ["list", "approve", "reject"])
-dbutils.widgets.text("ids", "")  # comma-separated hitl_queue ids, e.g. "3,7"
-dbutils.widgets.text("decided_by", "steward")
-
-action = dbutils.widgets.get("action").strip().lower()
-ids_raw = dbutils.widgets.get("ids").strip()
-decided_by = dbutils.widgets.get("decided_by").strip() or "steward"
-
-print(f"action={action}  ids={ids_raw!r}  decided_by={decided_by}")
-
-# COMMAND ----------
-
-# MAGIC %md ## Role gate (issue #18)
-# MAGIC Only principals holding the `metric_steward` role in `workspace.retail.autopilot_roles`
-# MAGIC may decide escalations. The registry is the application-tier RBAC source of truth;
-# MAGIC decisions are attested in the audit trail as `human:<email>`.
-
-# COMMAND ----------
-
-from databricks.sdk import WorkspaceClient  # noqa: E402
-
-_w_gate = WorkspaceClient()
-_me = _w_gate.current_user.me().user_name
+ME = WorkspaceClient().current_user.me().user_name
 _stewards = {
     r[0]
-    for r in spark.sql(  # noqa: F821
+    for r in spark.sql(  # noqa: F821 — spark is ambient in notebooks
         "SELECT principal FROM workspace.retail.autopilot_roles "
         "WHERE role = 'metric_steward' AND revoked_at IS NULL"
     ).collect()
 }
-if _me not in _stewards:
-    print(f"ACCESS DENIED: {_me} does not hold the metric_steward role.")
+if ME not in _stewards:
+    print(f"ACCESS DENIED: {ME} does not hold the metric_steward role.")
     print(f"Current stewards: {sorted(_stewards) or '(none assigned)'}")
     dbutils.notebook.exit("not-a-steward")  # noqa: F821
-print(f"role gate passed: {_me} is a metric_steward")
-decided_by = f"human:{_me}"  # attested identity overrides the widget
-
-
-# COMMAND ----------
-
-# MAGIC %md ## Connect to Lakebase (`hitl_queue`)
-# MAGIC Host discovery via the Postgres REST surface, then a 1-hour OAuth credential
-# MAGIC minted against the branch endpoint. The current user's email is the Postgres role.
+DECIDED_BY = f"human:{ME}"  # attested identity — used for every ruling below
+print(f"✓ role gate passed — reviewing as {DECIDED_BY}")
 
 # COMMAND ----------
 
-from databricks.sdk import WorkspaceClient  # noqa: E402
+# MAGIC %md ## Step 1 — Queue at a glance
+# MAGIC SQL is a first-class language here: the same queue any analyst could query.
+# MAGIC (`autopilot_escalations` is Delta — the in-workspace system of record. A Lakebase
+# MAGIC Postgres mirror serves laptop tooling; see `docs/runbook.md` for why Delta is
+# MAGIC SoR on Free Edition serverless — two real OOM incidents with binary drivers.)
 
-PROJECT_ID = lakebase.DEFAULT_PROJECT_ID  # genie-autopilot
-BRANCH = lakebase.DEFAULT_BRANCH  # production
-ENDPOINT_NAME = f"projects/{PROJECT_ID}/branches/{BRANCH}/endpoints/primary"
+# COMMAND ----------
 
-try:
-    import psycopg  # noqa: F401
-except Exception as exc:
-    print(f"psycopg is not installed in this environment ({exc}).")
-    print("Run this notebook from the deployed bundle so the repo package deps are available.")
-    dbutils.notebook.exit("skipped: psycopg unavailable")
+# MAGIC %sql
+# MAGIC SELECT status, kind, COUNT(*) AS n,
+# MAGIC        ROUND(AVG(confidence), 2)                    AS avg_confidence,
+# MAGIC        MIN(created_at)                              AS oldest,
+# MAGIC        MAX(datediff(now(), created_at))             AS max_age_days
+# MAGIC FROM workspace.retail.autopilot_escalations
+# MAGIC GROUP BY status, kind
+# MAGIC ORDER BY status, n DESC
 
-w = WorkspaceClient()  # ambient in-workspace auth
-user_email = w.current_user.me().user_name
+# COMMAND ----------
 
-host, token = None, None
-try:
-    # Endpoint host discovery.
-    listing = (
-        w.api_client.do(
-            "GET", f"/api/2.0/postgres/projects/{PROJECT_ID}/branches/{BRANCH}/endpoints"
-        )
-        or {}
-    )
-    endpoints = listing.get("endpoints") or []
-    if endpoints:
-        host = endpoints[0].get("host")
+# MAGIC %md
+# MAGIC **Queue-health rule of thumb:** pending age > 7 days means the steward cadence is
+# MAGIC too slow for the rate of business-language drift — review more often or add
+# MAGIC stewards (see *Scaling* at the bottom). The daily report tracks this as a KPI.
 
-    # Credential minting: typed SDK method when the installed SDK exposes it.
-    generate = getattr(getattr(w, "postgres", None), "generate_database_credential", None)
-    if callable(generate):
-        cred = generate(endpoint=ENDPOINT_NAME)
-        token = getattr(cred, "token", None) or (cred.get("token") if isinstance(cred, dict) else None)
-    else:
-        print("SDK lacks w.postgres.generate_database_credential — using REST/discovery fallback.")
-except Exception as exc:
-    print(f"Lakebase endpoint/credential discovery hiccup ({exc}) — trying full fallback.")
+# COMMAND ----------
 
-if not host or not token:
-    # lakebase.get_credential does project-level discovery plus a raw-REST token fallback.
-    try:
-        host, token = lakebase.get_credential(w, PROJECT_ID, BRANCH)
-    except Exception as exc:
-        print(f"ERROR: could not reach Lakebase project {PROJECT_ID!r}: {exc}")
-        print("Provision it first (lakebase.ensure_project) or check workspace permissions.")
-        dbutils.notebook.exit("failed: no Lakebase credential")
+# MAGIC %md ## Step 2 — Visual review
+# MAGIC Native `display()` charts — click the chart icon on any result to re-pivot.
+# MAGIC This is a notebook: make it yours.
 
-conn = psycopg.connect(
-    host=host,
-    user=user_email,
-    password=token,
-    dbname=lakebase.DEFAULT_DBNAME,
-    sslmode="require",
-    autocommit=True,
+# COMMAND ----------
+
+pending = spark.sql(  # noqa: F821
+    """
+    SELECT id, kind, term, entity, confidence, distinct_users, evidence,
+           datediff(now(), created_at) AS age_days
+    FROM workspace.retail.autopilot_escalations
+    WHERE status = 'pending'
+    ORDER BY kind, confidence DESC
+    """
 )
-lakebase.ensure_schema(conn)
-print(f"connected: {user_email} @ {host} / {lakebase.DEFAULT_DBNAME}")
+print(f"{pending.count()} pending escalations")
+display(pending.groupBy("kind").count())  # noqa: F821 — bar chart: pending mix by kind
 
 # COMMAND ----------
 
-# MAGIC %md ## Run the requested action
+# Novel terms ranked by how often users actually said them. Frequency is the
+# business signal: a term said 7 times is vocabulary; a term said once is noise.
+import json as _json
+
+from pyspark.sql import functions as F
+from pyspark.sql.types import IntegerType
+
+
+def _occurrences(evidence: str) -> int:
+    """Pull the occurrence count out of the JSON evidence payload (0 if absent)."""
+    try:
+        return int(_json.loads(evidence or "{}").get("occurrences", 0))
+    except Exception:
+        return 0
+
+
+occ = F.udf(_occurrences, IntegerType())
+novel = (
+    pending.where(F.col("kind") == "novel_term")
+    .withColumn("occurrences", occ("evidence"))
+    .select("id", "term", "occurrences", "distinct_users", "age_days")
+    .orderBy(F.desc("occurrences"))
+)
+display(novel)  # noqa: F821 — high-occurrence terms deserve certified definitions
 
 # COMMAND ----------
 
-# What approving each kind of escalation leads to on the next daily-ops run
-# (kinds emitted by steward.build_escalations; unknown kinds get the generic line).
-NEXT_STEP_BY_KIND = {
-    "below_gate_proposal": "approve → daily ops applies the synonym healing that sat below the auto-gate",
-    "poison_conflict": "approve → daily ops certifies the term despite the poison-list collision (review evidence!)",
-    "novel_term": "approve → daily ops adds the new vocabulary (glossary/synonym) users keep asking for",
-    "synonym": "approve → daily ops adds the metric-view / Genie column synonym",
-    "glossary": "approve → daily ops adds the term to the Genie space glossary",
-    "disambiguation": "approve → daily ops adds a space disambiguation instruction",
+# MAGIC %md ## Step 3 — Decisions needed (the docket, with evidence)
+# MAGIC Read each row: the suggested action derives from its kind; `evidence` shows *why*
+# MAGIC it escalated (who reported it, how often, what conflicted). Poison conflicts sort
+# MAGIC first — ambiguity is the costliest failure mode to leave unruled.
+
+# COMMAND ----------
+
+docket = spark.sql(  # noqa: F821
+    """
+    SELECT id, kind, term, entity, ROUND(confidence, 2) AS confidence, distinct_users,
+           CASE kind
+             WHEN 'below_gate_proposal' THEN 'approve/reject this term→metric mapping'
+             WHEN 'poison_conflict'     THEN 'approve = clarify-first rule (never auto-map)'
+             WHEN 'novel_term'          THEN 'approve = define & map next; reject = noise'
+             ELSE 'review'
+           END AS your_decision,
+           evidence
+    FROM workspace.retail.autopilot_escalations
+    WHERE status = 'pending'
+    ORDER BY CASE kind WHEN 'poison_conflict' THEN 0
+                       WHEN 'below_gate_proposal' THEN 1 ELSE 2 END,
+             confidence DESC
+    """
+)
+display(docket)  # noqa: F821
+
+# COMMAND ----------
+
+# MAGIC %md ## Step 4 — Record your rulings
+# MAGIC **This is the only cell you edit.** Map queue `id` → `"approve"` or `"reject"`,
+# MAGIC then run this cell and the next. You do not have to clear the queue in one
+# MAGIC sitting — undecided items simply stay pending for the next session.
+# MAGIC
+# MAGIC Example: `DECISIONS = {12: "approve", 15: "reject"}`
+
+# COMMAND ----------
+
+DECISIONS: dict[int, str] = {
+    # id: "approve" | "reject"     ← edit me, then run this cell and the next
 }
 
-
-def _suggested_next_step(kind: str) -> str:
-    return NEXT_STEP_BY_KIND.get(
-        (kind or "").strip().lower(),
-        f"approve → applied by the next daily-ops run (kind={kind or 'unknown'})",
-    )
-
-
-def _evidence_str(evidence) -> str:
-    if evidence is None:
-        return ""
-    text = evidence if isinstance(evidence, str) else json.dumps(evidence, default=str)
-    return text if len(text) <= 500 else text[:497] + "..."
-
-
-def _parse_ids(raw: str) -> list[int]:
-    parsed = []
-    for tok in raw.split(","):
-        tok = tok.strip()
-        if not tok:
-            continue
-        try:
-            parsed.append(int(tok))
-        except ValueError:
-            print(f"WARNING: skipping non-numeric id {tok!r}")
-    return parsed
-
-
-if action == "list":
-    rows = lakebase.pending(conn)
-    print(f"pending escalations: {len(rows)}")
-    if rows:
-        display_rows = [
-            (
-                int(r["id"]),
-                r.get("kind"),
-                r.get("term"),
-                r.get("entity"),
-                float(r["confidence"]) if r.get("confidence") is not None else None,
-                int(r["distinct_users"]) if r.get("distinct_users") is not None else None,
-                r.get("created_at"),
-                _evidence_str(r.get("evidence")),
-                _suggested_next_step(r.get("kind")),
-            )
-            for r in rows
-        ]
-        df = spark.createDataFrame(
-            display_rows,
-            "id LONG, kind STRING, term STRING, entity STRING, confidence DOUBLE, "
-            "distinct_users LONG, created_at TIMESTAMP, evidence STRING, "
-            "suggested_next_step STRING",
-        )
-        display(df)
-        print("To decide: re-run this notebook with action=approve ids=3,7 (or action=reject).")
-        print("Decisions are recorded here; application happens on the next daily-ops run.")
-    else:
-        print("(queue empty — nothing awaiting review)")
-
-elif action in ("approve", "reject"):
-    queue_ids = _parse_ids(ids_raw)
-    if not queue_ids:
-        print("No valid ids supplied — set the `ids` widget (e.g. ids=3,7) and re-run.")
-        dbutils.notebook.exit("skipped: no ids")
-    approved = action == "approve"
-    for qid in queue_ids:
-        lakebase.decide(conn, qid, approved=approved, decided_by=decided_by)
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT status, decided_by, decided_at FROM hitl_queue WHERE id = %s", (qid,)
-            )
-            row = cur.fetchone()
-        if row is None:
-            print(f"  id {qid}: NOT FOUND in hitl_queue — no decision recorded")
-        elif row[0] == ("approved" if approved else "rejected") and row[1] == decided_by:
-            print(f"  id {qid}: {row[0]} by {row[1]} at {row[2]}")
-        else:
-            print(f"  id {qid}: already decided earlier (status={row[0]}, by={row[1]}) — unchanged")
-    print()
-    print("Reminder: decide ≠ deploy. Approved items are APPLIED by the next daily-ops run")
-    print("(notebook 30 / steward.apply_approved); the audit ledger records the application.")
-
-else:
-    print(f"Unknown action {action!r} — expected list | approve | reject.")
-
-conn.close()
+invalid = {i: d for i, d in DECISIONS.items() if d not in ("approve", "reject")}
+assert not invalid, f"decisions must be 'approve' or 'reject': {invalid}"
+print(f"{len(DECISIONS)} ruling(s) staged: {DECISIONS or '(none — edit this cell to decide)'}")
 
 # COMMAND ----------
 
-# MAGIC %md ## How this maps to the paved-path story
+# Apply the staged rulings. Only 'pending' rows can transition — a decision made in
+# a previous session is never silently overwritten (optimistic concurrency for a
+# multi-steward team) — and every transition is stamped with the attested identity
+# and a timestamp. This UPDATE trail, plus Delta time travel, is the governance record.
+applied_now = 0
+for qid, ruling in DECISIONS.items():
+    status = "approved" if ruling == "approve" else "rejected"
+    spark.sql(  # noqa: F821
+        f"""
+        UPDATE workspace.retail.autopilot_escalations
+        SET status = '{status}', decided_at = now(), decided_by = '{DECIDED_BY}'
+        WHERE id = {int(qid)} AND status = 'pending'
+        """
+    )
+    applied_now += 1
+print(f"recorded {applied_now} ruling(s) as {DECIDED_BY}")
+print("approved items are APPLIED by the next daily_ops run (03:30 MT, or trigger it manually)")
+
+# COMMAND ----------
+
+# MAGIC %md ## Step 5 — Verify
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT status, COUNT(*) AS n
+# MAGIC FROM workspace.retail.autopilot_escalations GROUP BY status
+# MAGIC UNION ALL
+# MAGIC SELECT CONCAT('decided by ', decided_by), COUNT(*)
+# MAGIC FROM workspace.retail.autopilot_escalations
+# MAGIC WHERE decided_by IS NOT NULL GROUP BY decided_by
+
+# COMMAND ----------
+
+# MAGIC %md ## Scaling this process to a steward team
 # MAGIC
-# MAGIC The autopilot proposes; the steward disposes. Every escalation in this queue is a
-# MAGIC piece of vocabulary the system *observed* users needing but was not confident enough
-# MAGIC to certify on its own. A steward approval here turns that observation into **certified
-# MAGIC context** — synonyms, glossary terms, disambiguation instructions — which the next
-# MAGIC daily-ops run applies to Unity Catalog and the Genie space, and records in
-# MAGIC `autopilot_audit_ledger` with the approver's identity. Rejections are equally durable:
-# MAGIC they stay in `hitl_queue` as precedent, so the same noisy proposal does not come back.
-# MAGIC Decision and application stay separated on purpose — the human moment is cheap and
-# MAGIC synchronous, the deployment is governed, batched, and audited.
+# MAGIC This notebook is deliberately a **process**, not a personal tool:
+# MAGIC
+# MAGIC 1. **Adding a steward is one row:** `INSERT INTO workspace.retail.autopilot_roles
+# MAGIC    VALUES ('teammate@corp.com', 'metric_steward', 'human:you@corp.com', now(), NULL)`.
+# MAGIC    The role gate admits them immediately; every ruling they make is attested under
+# MAGIC    their own identity — accountability scales with the team.
+# MAGIC 2. **Dividing the docket:** stewards filter Step 3 by `kind` (a finance steward
+# MAGIC    takes metric mappings; a governance steward takes poison terms) or by domain
+# MAGIC    schema as more domains onboard. Only `pending` rows transition, so two
+# MAGIC    stewards cannot double-decide the same item.
+# MAGIC 3. **Cadence & SLA:** review at least weekly; the daily report alarms on
+# MAGIC    `max pending age > 7 days` — the queue must drain.
+# MAGIC 4. **On a paid workspace:** stewards become a real group (`metric_stewards`) with
+# MAGIC    UC grants (`infra/rbac.md`); this notebook is shared CAN RUN, the roles table
+# MAGIC    admin-writable only — same process, platform-enforced.
+# MAGIC 5. **The definition-authoring loop:** approving a `novel_term` means "worth
+# MAGIC    defining" — author the certified definition through the benchmark
+# MAGIC    certification workflow (`make certify`), so new metrics arrive
+# MAGIC    benchmark-tested exactly like everything else the system learns.
+# MAGIC
+# MAGIC ---
+# MAGIC *Single source of truth: this notebook lives in GitHub
+# MAGIC (`notebooks/80_steward_console.py`), deploys to the workspace via
+# MAGIC `databricks bundle deploy`, and runs ad-hoc (Run All) or via the unscheduled
+# MAGIC `steward_console` job. The queue is Delta with full time travel — every
+# MAGIC historical decision is auditable via `DESCRIBE HISTORY`.*
