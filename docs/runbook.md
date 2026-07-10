@@ -10,6 +10,47 @@ happened (the notebook-85 OOM, the column-name pipeline errors, the Lakebase
 endpoint-discovery failure); this runbook is written from that history, not from
 imagination.
 
+## Playbook 0 — The ship cycle (deployment topology; read before debugging "stale code")
+
+**Symptom:** a fix is merged on GitHub `main` but the workspace still misbehaves —
+a job runs old logic, or an interactively opened notebook shows/executes code that
+was already fixed.
+
+**Diagnosis:** GitHub `main` is the single source of truth, and the workspace holds
+**two downstream copies that never update themselves**:
+
+1. **Git folder** (`/Users/cfollmer@strataintel.ai/databricks-capstone`) — the
+   human interactive surface. Pinned to the last-pulled commit; merging a PR does
+   NOT move it.
+2. **Bundle deployment** (`.bundle/` dev target) — what every scheduled job
+   executes. Only `databricks bundle deploy` moves it.
+
+This is not hypothetical: on 2026-07-10 a notebook hang was fixed on `main` and
+bundle-deployed (jobs green), while the interactive Git-folder copy — the one
+being debugged — silently kept the broken commit for another day.
+
+**Recovery — the four-step ship cycle, run in full every time:**
+
+```bash
+make test && make lint                        # gates
+git push origin main                          # 1. GitHub is truth
+databricks bundle deploy -t dev               # 2. refresh the job copy
+databricks api patch /api/2.0/repos/2581306377936810 --json '{"branch": "main"}'
+                                              # 3. pull the Git folder to HEAD
+```
+
+(Manual alternative for step 3: open the Git folder in the workspace UI and click
+the `main` branch chip → **Pull**. Rediscover the repo id if the folder was
+recreated: `databricks api get "/api/2.0/repos?path_prefix=/Workspace/Users/cfollmer@strataintel.ai"`.)
+
+**Verification:** the Git folder's `head_commit_id` from
+`databricks api get /api/2.0/repos/2581306377936810` matches `git rev-parse HEAD`
+locally, and `databricks bundle run steward_console -t dev` terminates SUCCESS.
+
+**Rule:** the Git folder is a read-and-run surface. Never edit code there — edits
+live only in the workspace until committed from the Git folder UI, which would
+create a second writable head. All writes happen in the local clone → GitHub.
+
 ## Playbook 1 — Free Edition fair-use compute freeze
 
 **Symptom.** Jobs fail to acquire serverless compute, runs sit queued far past their
