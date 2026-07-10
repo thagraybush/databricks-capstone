@@ -101,35 +101,48 @@ pending = spark.sql(  # noqa: F821
     ORDER BY kind, confidence DESC
     """
 )
-print(f"{pending.count()} pending escalations")
-display(pending.groupBy("kind").count())  # noqa: F821 — bar chart: pending mix by kind
+kind_counts = {r["kind"]: r["count"] for r in pending.groupBy("kind").count().collect()}
+print(f"{sum(kind_counts.values())} pending escalations")
+
+# Render the mix as an inline chart (no clicks needed) — matplotlib ships on serverless.
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(7, 3))
+ax.barh(list(kind_counts.keys()), list(kind_counts.values()), color="#2e7d64")
+ax.set_title("Pending escalations by kind")
+ax.set_xlabel("count")
+for i, v in enumerate(kind_counts.values()):
+    ax.text(v, i, f" {v}", va="center")
+plt.tight_layout()
+plt.show()
 
 # COMMAND ----------
 
 # Novel terms ranked by how often users actually said them. Frequency is the
 # business signal: a term said 7 times is vocabulary; a term said once is noise.
-import json as _json
-
-from pyspark.sql import functions as F
-from pyspark.sql.types import IntegerType
-
-
-def _occurrences(evidence: str) -> int:
-    """Pull the occurrence count out of the JSON evidence payload (0 if absent)."""
-    try:
-        return int(_json.loads(evidence or "{}").get("occurrences", 0))
-    except Exception:
-        return 0
-
-
-occ = F.udf(_occurrences, IntegerType())
-novel = (
-    pending.where(F.col("kind") == "novel_term")
-    .withColumn("occurrences", occ("evidence"))
-    .select("id", "term", "occurrences", "distinct_users", "age_days")
-    .orderBy(F.desc("occurrences"))
+# get_json_object extracts natively from the evidence JSON — no UDF, no warnings.
+novel = spark.sql(  # noqa: F821
+    """
+    SELECT id, term,
+           CAST(get_json_object(evidence, '$.occurrences') AS INT) AS occurrences,
+           distinct_users, datediff(now(), created_at) AS age_days
+    FROM workspace.retail.autopilot_escalations
+    WHERE status = 'pending' AND kind = 'novel_term'
+    ORDER BY occurrences DESC
+    """
 )
-display(novel)  # noqa: F821 — high-occurrence terms deserve certified definitions
+rows = novel.collect()
+if rows:
+    import matplotlib.pyplot as plt
+
+    top = rows[:12][::-1]  # top terms, reversed so the biggest bar sits on top
+    fig, ax = plt.subplots(figsize=(8, max(3, 0.35 * len(top))))
+    ax.barh([r.term for r in top], [r.occurrences or 0 for r in top], color="#5b7fb5")
+    ax.set_title("Novel terms by how often users said them")
+    ax.set_xlabel("occurrences in failed/corrected questions")
+    plt.tight_layout()
+    plt.show()
+display(novel)  # noqa: F821 — full sortable table beneath the chart
 
 # COMMAND ----------
 
@@ -158,6 +171,47 @@ docket = spark.sql(  # noqa: F821
     """
 )
 display(docket)  # noqa: F821
+
+# COMMAND ----------
+
+# MAGIC %md ## Step 3.5 — AI-drafted recommendations (you still decide)
+# MAGIC The platform's own LLM (`ai_query` on serverless) triages every pending item and
+# MAGIC drafts a ready-to-paste `DECISIONS` dict with a one-line rationale per ruling.
+# MAGIC **The draft is triage, not judgment** — copy it into Step 4 and flip anything
+# MAGIC you disagree with; only your edited dict gets recorded, under your identity.
+
+# COMMAND ----------
+
+try:
+    drafted = spark.sql(  # noqa: F821 — one LLM call per pending row, serverless-native
+        """
+        SELECT id, kind, term,
+               ai_query('databricks-gpt-oss-120b', CONCAT(
+                 'You triage data-governance escalations. Reply EXACTLY as ',
+                 'approve|<max 8 word reason> or reject|<max 8 word reason>. Policy: ',
+                 'below_gate_proposal: approve only if the term plausibly means that metric. ',
+                 'poison_conflict: approve (clarify-first is the correct ruling). ',
+                 'novel_term: approve ONLY genuine business vocabulary worth defining; ',
+                 'reject greetings, sentence fragments, typos, and generic words. ',
+                 'Item: kind=', kind, ' term=', term,
+                 ' entity=', COALESCE(entity, 'n/a'),
+                 ' evidence=', COALESCE(evidence, '{}')
+               )) AS draft
+        FROM workspace.retail.autopilot_escalations
+        WHERE status = 'pending'
+        ORDER BY id
+        """
+    ).collect()
+    print("AI-drafted ruling sheet — copy into Step 4 and edit:\n")
+    print("DECISIONS = {")
+    for r in drafted:
+        rec, _, why = (r.draft or "reject|no draft returned").partition("|")
+        rec = "approve" if "approve" in rec.lower() else "reject"
+        print(f'    {r.id}: "{rec}",  # [{r.kind}] {r.term!r} — {why.strip()[:70]}')
+    print("}")
+except Exception as exc:
+    print(f"→ AI draft unavailable on this workspace ({str(exc)[:140]})")
+    print("  Review the docket manually — the process works without the co-pilot.")
 
 # COMMAND ----------
 

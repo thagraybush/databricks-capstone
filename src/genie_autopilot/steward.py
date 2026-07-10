@@ -48,6 +48,11 @@ KNOWN_VOCABULARY: set[str] = {
     "first_purchase", "last_purchase", "order_count", "basket_size",
     # poison terms (conflicted; already governed by disambiguation instructions)
     "sales", "turnover", "baskets", "checked out",
+    # physical table / view names — correction texts and power users name them
+    # directly ("...in gold_daily_revenue"); fragments of them are not novel vocabulary
+    "fact_sales", "gold_daily_revenue", "dim_products", "gold_sessions",
+    "gold_customer_rfm", "gold_funnel_daily", "revenue_metrics", "funnel_metrics",
+    "banking_gold", "product", "products",
 }  # fmt: skip
 
 STOPWORDS: set[str] = {
@@ -72,6 +77,14 @@ STOPWORDS: set[str] = {
     # misc
     "please", "about", "than", "so", "just", "only", "also", "up", "down", "out",
     "not", "no",
+    # conversational noise the session engine deliberately injects (greetings,
+    # filler, contractions the tokenizer splits: "what's" -> "what" + "s")
+    "s", "whats", "hey", "hi", "hello", "morning", "pls", "help", "quick", "real", "overall",
+    "deck", "review", "ok", "okay", "then", "doing", "make", "made", "add",
+    "alongside", "one", "there", "here", "again", "still",
+    # correction meta-verbs (correction sentences are excluded from mining anyway,
+    # but these must never anchor an n-gram)
+    "means", "refers", "mapped", "maps",
 }  # fmt: skip
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
@@ -83,6 +96,23 @@ def _normalize_term(term: str) -> str:
 
 
 _NORMALIZED_VOCABULARY: frozenset[str] = frozenset(_normalize_term(t) for t in KNOWN_VOCABULARY)
+
+# Single-word governed terms, singular-normalized. An n-gram containing one of these
+# as a token is not novel vocabulary ("many sales", "which countries") — the governed
+# word is doing the semantic work. Multi-word entries deliberately do NOT contribute
+# tokens here, so 'gross margin' stays novel despite 'gross_revenue' being known.
+def _singularize(token: str) -> str:
+    """Naive singular form for vocabulary-token comparison (countries -> country)."""
+    if token.endswith("ies") and len(token) > 4:
+        return token[:-3] + "y"
+    if token.endswith("s") and not token.endswith("ss"):
+        return token[:-1]
+    return token
+
+
+_STANDALONE_VOCAB: frozenset[str] = frozenset(
+    _singularize(t) for t in _NORMALIZED_VOCABULARY if " " not in t
+)
 
 
 # -- candidate extraction --------------------------------------------------------
@@ -103,7 +133,19 @@ def extract_candidate_terms(question: str) -> set[str]:
         parts = gram.split()
         if all(p in STOPWORDS or p.isdigit() for p in parts):
             continue
+        # Mixed bigrams (stopword + content: 'margin by', 'our margin') are phrase
+        # fragments, not vocabulary — only all-content bigrams can be novel terms.
+        if len(parts) == 2 and any(p in STOPWORDS or p.isdigit() for p in parts):
+            continue
         if gram in _NORMALIZED_VOCABULARY:
+            continue
+        # An n-gram built from a governed standalone term ('sales', 'countries') plus
+        # only stopwords ("many sales", "which countries", "sales did") is a phrasing
+        # of known vocabulary, not new vocabulary. A governed token combined with a
+        # CONTENT word ("perfect order") stays novel — that's a real compound term.
+        governed = [p for p in parts if _singularize(p) in _STANDALONE_VOCAB]
+        others = [p for p in parts if _singularize(p) not in _STANDALONE_VOCAB]
+        if governed and all(p in STOPWORDS or p.isdigit() for p in others):
             continue
         candidates.add(gram)
     return candidates
@@ -151,6 +193,11 @@ def detect_novel_terms(
     stats: dict[str, dict] = {}
     for row in telemetry_rows:
         question = str(row.get("question") or row.get("content") or "")
+        # Correction SENTENCES ("X means Y in table") are meta-language, not user
+        # vocabulary — they are already mined by the drift engine. Mining them here
+        # floods the docket with fragments ("sales means", "in gold").
+        if parse_correction(question) is not None:
+            continue
         if only_negative and not (_is_negative(row) or _is_corrected(row, question)):
             continue
         for term in extract_candidate_terms(question):

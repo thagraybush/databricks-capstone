@@ -142,7 +142,8 @@ def test_detect_novel_terms_only_negative_false_counts_all_rows():
 
 def test_detect_novel_terms_counts_corrected_rows_without_negative_rating():
     rows = [
-        {"question": "basket velocity means gold.fact_orders.baskets_per_hour", "user": "amy"},
+        {"question": "show basket velocity by hour", "user": "amy",
+         "correction": "basket velocity means gold.fact_orders.baskets_per_hour"},
         {"question": "basket velocity for last week", "user": "bob", "rated": "negative"},
     ]
     terms = {r["term"] for r in detect_novel_terms(rows)}
