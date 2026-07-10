@@ -38,12 +38,16 @@
 # MAGIC may record decisions. The registry — not this notebook — is the source of truth
 # MAGIC for who stewards are; decisions are attested as `human:<your-email>` regardless
 # MAGIC of any manual input, so the audit trail always carries a verified identity.
+# MAGIC *(This first cell also starts the serverless Spark session — expect up to ~1 min
+# MAGIC on the session's first command, then instant.)*
 
 # COMMAND ----------
 
-from databricks.sdk import WorkspaceClient
-
-ME = WorkspaceClient().current_user.me().user_name
+# Identity comes from the Spark session itself — current_user() is the identity
+# Unity Catalog is already enforcing, and it costs zero extra round-trips. (The
+# databricks-sdk WorkspaceClient auth handshake can hang for minutes on Free
+# Edition INTERACTIVE serverless — jobs inject auth env vars, notebooks don't.)
+ME = spark.sql("SELECT current_user() AS u").first()[0]  # noqa: F821
 _stewards = {
     r[0]
     for r in spark.sql(  # noqa: F821 — spark is ambient in notebooks
