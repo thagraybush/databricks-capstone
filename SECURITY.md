@@ -32,10 +32,10 @@ PATs, OAuth tokens, `.databrickscfg`, and `.env` never enter git history:
 - **`.env` / `.envrc`** are covered by [.gitignore](.gitignore) (verified) and the
   working-tree `.env` is confirmed untracked.
 - **`.databrickscfg`** (the `--profile free-edition` used by `databricks bundle
-  deploy`) lives in the home directory, which git never sees. **Known gap,
-  fix-forward:** `.gitignore` does not list `.databrickscfg` explicitly, so a
-  repo-local copy would not be ignored. Until that line lands, keep the profile file
-  in `~` only.
+  deploy`) lives in the home directory, which git never sees — and `.gitignore`
+  lists it explicitly, so even a stray repo-local copy cannot be committed. (An
+  earlier revision of this file flagged that line as a fix-forward gap; it is
+  closed.)
 - `ground_truth.jsonl` (the DQ answer key) is also kept local — an eval-integrity
   measure rather than a secret, but part of the same "not in the workspace, not in
   the repo" discipline ([infra/README.md](infra/README.md), "not codified").
@@ -77,6 +77,40 @@ see the service-principal row and day-1 plan in
 [docs/backlog-free-edition-limits.md](docs/backlog-free-edition-limits.md) and the
 group model in [infra/rbac.md](infra/rbac.md). Nothing about the architecture
 changes; the single-PAT posture is a Free Edition constraint, not a design choice.
+
+## Public-repo audit — 2026-07-10
+
+This repository went public; the following audit ran the same day and its
+protections are now standing configuration.
+
+**Findings (all clean):**
+
+- **Full git-history secret scan** — every commit on every branch scanned for
+  Databricks PATs (`dapi…`), GitHub tokens (`ghp_`/`github_pat_`), AWS keys,
+  Slack tokens, private-key blocks, JWTs, and credential-bearing connection
+  strings: **zero hits**. No sensitive filename (`.env`, `.databrickscfg`,
+  `*.pem`, `*.key`) was ever tracked, so no history rewrite was needed.
+- **Workspace token inventory** — exactly one PAT exists (comment
+  `genie-autopilot`, 90-day expiry); no Git credentials are stored in the
+  workspace (the Git folder pulls this public repo anonymously); one active
+  user. Nothing GitHub-visible authenticates to the workspace.
+- **CI supply chain** — the workflow token is read-only, the repo holds **zero
+  Actions secrets** (so a fork PR has nothing to exfiltrate), and there are no
+  deploy keys or webhooks.
+- **Identifiers vs. credentials** — the committed workspace URL, warehouse ID,
+  and Genie space IDs identify resources but cannot authenticate to them; all
+  workspace access requires the PAT, which exists only in the macOS Keychain.
+
+**Hardening applied (repo settings, enforced by GitHub):**
+
+| Control | State |
+|---|---|
+| Secret scanning | enabled |
+| Push protection (blocks a push *containing* a secret) | enabled |
+| Dependabot alerts + security updates | enabled |
+| Ruleset `protect-main`: no force-push, no branch deletion, zero bypass actors | active |
+| Actions pinned to immutable commit SHAs + `sha_pinning_required` repo-wide | enforced |
+| Workflow permissions | `contents: read` (explicit) |
 
 ## Responsible use
 
